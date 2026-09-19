@@ -19,12 +19,12 @@ Updated: 2026-09-19
 - Active issue: #12
 - Branch: gate-3/review-hardening
 - PR: #19
-- Status: PR #19 CI green; independent trust review clean; external Codex review unavailable due account review quota
+- Status: two Codex P2 findings fixed on latest code head; final CI/review reconciliation pending
 
 ## Blockers
 
 - No code/test blocker.
-- Automated Codex review on the final PR head could not run because the account hit its code-review usage limit. An independent manual trust review of the exact final branch found no unresolved trust-critical issue; this limitation is recorded rather than hidden.
+- Codex reviewed an earlier PR #19 head and found two additional P2 compatibility defects. Both are fixed with regression tests; automated re-review is unavailable because the account review quota is now exhausted.
 
 ## Verified evidence
 
@@ -33,7 +33,7 @@ Full repository check on the Gate 3e code worktree:
 - upstream Cloudflare validators: 65/65 PASS
 - Gate 1 eval/adapter tests: 13/13 PASS
 - strict TypeScript compile: PASS
-- domain/storage/orchestrator tests: 71/71 PASS
+- domain/storage/orchestrator tests: 73/73 PASS
 - npm audit: 0 vulnerabilities
 - diff whitespace check: PASS
 
@@ -45,10 +45,12 @@ Delayed-review fixes now prove:
 - mixed v2→v3 history remains readable after that terminalization;
 - more than 128 distinct incomplete reasons are summarized with a deterministic overflow sentinel instead of wedging the active run;
 - duplicate D-011 memory is consolidated;
-- duplicate durable Decision/Lesson IDs now fail the memory checker.
+- duplicate durable Decision/Lesson IDs now fail the memory checker;
+- checksum-valid v3→v2 schema downgrade inside one stream is rejected;
+- schema-v2 assignment outcomes are validated against the exact v2 outcome enum before upcast.
 
 Decision D-012 records the schema-upgrade compatibility rule.
 
 ## Next action
 
-Merge PR #19, close issue #12, and advance durable project memory to Gate 4: scoped/PR audit path and deterministic context compiler.
+Confirm CI on the corrected PR #19 head, resolve the two addressed Codex review threads, then merge PR #19, close issue #12, and advance durable project memory to Gate 4.
