@@ -323,3 +323,59 @@ On restart:
 - retry after ambiguous in-progress work is explicit and consumes fresh budget/worker identity;
 - the current reference implementation assumes one active orchestrator per run; distributed concurrency/leases remain a later scaling concern;
 - Gate 4 context compilation must compile into these durable owned task receipts rather than directly into provider-specific requests.
+
+
+## D-011 — Durable task/result receipts make orchestration restart-safe
+
+Status: Accepted  
+Date: 2026-09-19
+
+### Context
+
+Gate 2b made the accepted event stream durable, but durable state alone did not make orchestration resumable.
+
+Before this decision, a process could crash:
+
+- after an assignment was created but before execution;
+- after assignment start while external completion was unknowable;
+- after a worker result was normalized and assignment completion persisted but before downstream semantic events were emitted;
+- after a critic/verifier failure but before the nonterminal incomplete reason was remembered.
+
+Reconstructing these states from mutable current projections would either duplicate work, lose the exact task context, or silently forget why a run was incomplete.
+
+### Decision
+
+Owned domain schema version 3 checkpoints both sides of every worker call.
+
+At assignment creation, canonical state stores a bounded versioned `taskReceipt` containing the exact provider-neutral worker task.
+
+At successful assignment completion, the same accepted event atomically stores:
+
+- the typed `valid_result` outcome;
+- a bounded versioned normalized `resultReceipt`.
+
+Failed, cancelled, refused, malformed, sandbox-failed, provider-failed, timed-out, permission-denied, or orchestrator-interrupted assignments must store `resultReceipt: null`.
+
+Active incomplete reasons are also canonical event state through `run_incomplete_reason_recorded`.
+
+`runToTerminal` and `resumeToTerminal` use the same phase-driven orchestration engine.
+
+Resume policy is fail-closed:
+
+- a planned assignment executes from its original durable task receipt;
+- a succeeded assignment consumes its durable result receipt and does not call the worker again;
+- a result receipt is re-validated through the task-specific runtime observation parser before semantic use;
+- an in-progress assignment at restart is ambiguous, so it is completed as `orchestrator_interrupted`;
+- recoverable interrupted work is retried through a new assignment/fresh worker and consumes budget visibly;
+- persisted incomplete reasons independently prevent `run_completed`.
+
+Task receipts are checked against run ID, source snapshot, profile, assignment kind, candidate identity, and/or coverage ownership before restart execution.
+
+### Consequences
+
+- a crash after successful worker completion cannot cause that completed worker call to run twice;
+- task-specific context such as critic round survives restart exactly;
+- a crash cannot erase a known incomplete condition;
+- event-store replay plus receipts are sufficient to continue the bounded orchestration lifecycle on a new process;
+- distributed multi-orchestrator locking/leadership remains a later concern and is not implied by single-process restart safety;
+- Gate 4 context compilation must produce deterministic task payloads suitable for durable task receipts.
