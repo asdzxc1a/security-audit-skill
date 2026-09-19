@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "run_id": "tenant-documents-claude-sonnet-baseline2",
+  "case_id": "tenant-documents",
+  "upstream_baseline": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
+  "status": "failed",
+  "source_ref": "sha256:21de100825fbe64e261e2fe82c9cb28a07a6db3591688cc5d86158fbb70729a6",
+  "profile": "quick",
+  "host": {
+    "name": "claude-code",
+    "model": "sonnet"
+  },
+  "artifacts": {
+    "findings": null,
+    "coverage_ledger": null
+  },
+  "usage": {
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "cost_usd": 0
+  },
+  "worker_outcomes": {
+    "valid_result": 0,
+    "malformed_result": 0,
+    "model_refusal": 0,
+    "provider_error": 1,
+    "timeout": 0,
+    "permission_denied": 0,
+    "sandbox_failure": 0,
+    "cancelled": 0
+  },
+  "host_error": "Claude Code exited nonzero (1)"
+}
