@@ -191,3 +191,42 @@ Provider throws and malformed observations become typed worker outcomes rather t
 - retries, critic waves, final verification, and future MCP actions must preserve the same observation → owned event boundary;
 - projections are read models only;
 - a provider feature may improve reasoning but cannot weaken reducer/event-store invariants.
+
+
+## D-009 — Canonical coverage and candidates are evidence-bearing bounded records
+
+Status: Accepted  
+Date: 2026-09-19
+
+### Context
+
+The first Gate 3 orchestration slice correctly separated worker observations from canonical events, but post-merge review found four trust failures:
+
+1. candidate verification received only an opaque fingerprint rather than the hunter's substantive claim;
+2. an unsupported worker assertion could become `covered` without reviewed paths/check evidence;
+3. unbounded observation fields could produce an event larger than the store's read limit and poison future replay;
+4. the same root-cause fingerprint reported by multiple coverage units could trigger a duplicate-candidate transition failure.
+
+These are contract defects, not provider-specific bugs.
+
+### Decision
+
+Owned domain schema version 2 and orchestration schema version 2 make evidence a first-class bounded part of canonical state.
+
+Coverage resolutions for `covered`, `candidate`, and `blocked` require bounded reviewed paths and structured checks.
+
+Candidates persist a bounded substantive claim: title, description, claimed root cause, intended behavior, trace, evidence, and conditions. Candidate verifier tasks receive that persisted claim and every linked coverage ID.
+
+A repeated fingerprint reuses the existing canonical candidate through an explicit `candidate_linked_to_coverage` event rather than registering a duplicate.
+
+Observation parsing bounds total serialized bytes, field sizes, array cardinality, paths, claims, checks, evidence requirements, and adapter metadata. The event store independently rejects an envelope exceeding its durable read limit before publication.
+
+### Consequences
+
+- a bare model assertion cannot create clean coverage;
+- independent verification has the actual claim/evidence to challenge;
+- one root cause can span multiple coverage units without duplicate findings;
+- untrusted output cannot make a run unreadable by exceeding persistence bounds;
+- read projections deep-copy evidence-bearing records;
+- future critic/final-verification/reporting orchestration must use these v2 contracts;
+- there is no supported production v1 event history to migrate; v2 is the current pre-production owned contract.
