@@ -6,7 +6,7 @@
     "check:validators": "node --test skills/security-audit/validate-findings.test.cjs skills/security-audit/validate-coverage-ledger.test.cjs",
     "check:evals": "node evals/harness.cjs check && node --test evals/*.test.cjs",
     "build:domain": "tsc -p tsconfig.json",
-    "check:domain": "npm run build:domain && node --test dist/domain/*.test.js",
+    "check:domain": "npm run build:domain && node --test dist/domain/*.test.js dist/storage/*.test.js",
     "eval:dry-run": "node evals/run-baseline.cjs --dry-run",
     "check": "npm run check:memory && npm run check:validators && npm run check:evals && npm run check:domain"
   },

@@ -34,6 +34,22 @@ This performs strict TypeScript compilation and reducer tests. The reducer suite
 - terminal state immutability;
 - strict sequence/run scoping.
 
+### Gate 2b durable event store
+
+Covered by `npm run check:domain`.
+
+Storage tests must prove:
+
+- reducer-rejected events never persist;
+- accepted streams replay to identical canonical state after restart;
+- exact append retries are idempotent;
+- duplicate event IDs with changed content fail;
+- checksum corruption fails closed;
+- `HEAD` detects tail truncation;
+- missing `HEAD` recovers from a complete checksum-validated stream;
+- unpublished temp files do not become history;
+- projections are rebuilt from replayed reducer state.
+
 ### Full repository
 `npm run check`
 
