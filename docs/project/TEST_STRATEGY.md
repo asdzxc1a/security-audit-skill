@@ -2,86 +2,33 @@
 
 ## Principle
 
-Tests and current code outrank prose. Use the smallest meaningful evidence for the current change, and do not claim completion while required evidence is red.
+Tests/current code outrank prose. Use the smallest meaningful evidence and do not claim completion while required evidence is red.
 
-## Gate 0 checks
+## Core checks
 
-### Memory invariants
-
-Run:
-
-npm run check:memory
-
-This verifies the durable-memory structure and obvious safety invariants.
+### Memory
+`npm run check:memory`
 
 ### Upstream regression
+`npm run check:validators`
 
-Run:
+### Gate 1 evaluation harness
+`npm run check:evals`
 
-npm run check:validators
+The eval layer keeps these metrics distinct: detection recall, correct-verdict recall, confirmed precision, false-positive confirmed records, decoy hits, verdict overclaim/underclaim, mapped/evidence-attempted/resolved coverage, and actually observed usage telemetry.
 
-This executes the existing Cloudflare findings and coverage-ledger validator suites without changing their contracts.
+Fixture metrics are not universal real-world recall claims.
 
-### Full repository check
+### Full repository
+`npm run check`
 
-Run:
+## Future layers
 
-npm run check
-
-Use this when a change touches project memory, shared validation infrastructure, or anything broad enough that both memory and upstream regressions matter.
-
-## Future test layers
-
-Add these only when their gate exists.
-
-### Contract tests
-
-Validate every owned public/internal schema, version transition, and rejected malformed shape.
-
-### State-machine tests
-
-Generate valid and invalid event sequences. Prove invariants such as:
-
-- no covered unit without evidence;
-- no finalized confirmed finding without required independent verification;
-- a worker cannot validate its own candidate;
-- strict budget cannot be silently exceeded;
-- a failed/refused/malformed worker cannot become clean coverage.
-
-### Worker protocol fixtures
-
-Test valid result, malformed result, refusal, provider error, timeout, permission denial, sandbox failure, and cancellation as distinct outcomes.
-
-### Integration tests
-
-Exercise source snapshot → planning → assignment → result ingestion → validation → report on synthetic repositories.
-
-### Sandbox adversarial tests
-
-Test symlinks, FIFOs, special files, path races, oversized artifacts, network denial, environment isolation, resource caps, and immutable source behavior.
-
-### MCP contract tests
-
-Validate tool input/output schemas, authorization/resource scoping, idempotency, read/write annotations, cancellation, and resumable identifiers.
-
-### Evaluation harness
-
-Use seeded vulnerable and clean fixtures to measure:
-
-- precision;
-- recall on the controlled answer key;
-- duplicate rate;
-- severity/impact calibration;
-- coverage-unit quality;
-- critic recovery;
-- needs-validation honesty;
-- tokens/cost per resolved unit where measurable.
-
-Do not generalize fixture recall into a universal real-world recall claim.
+Add only in their gate: owned contract tests, state-machine property tests, worker failure fixtures, integration tests, sandbox adversarial tests, and MCP contract tests.
 
 ## Evidence discipline
 
-- Record exact commands and relevant output in the PR.
-- Store verbose completed benchmark/research evidence in docs/project/history when it has future value.
-- Do not paste repeated green logs into STATE.
-- Do not use retries to make deterministic red tests appear green.
+- Record exact relevant commands/results in the PR.
+- Archive verbose accepted benchmark evidence under history.
+- Do not bloat STATE with repeated green logs.
+- Do not use retries to hide deterministic failures.

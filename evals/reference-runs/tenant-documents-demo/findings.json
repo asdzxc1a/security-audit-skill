@@ -1,0 +1,132 @@
+[
+  {
+    "verdict": "confirmed",
+    "fingerprint": "tenant-documents.cross-tenant-read",
+    "title": "Document read omits tenant ownership",
+    "description": "An authenticated tenant can read another tenant document by id.",
+    "root_cause": "getDocument in index.js selects by id without tenant ownership, allowing cross-tenant disclosure.",
+    "intended_behavior": "Reads must bind document id to the authenticated tenant.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "index.js",
+        "line": 8,
+        "scope": "getDocument",
+        "description": "Caller supplies actor and document id."
+      },
+      {
+        "kind": "sink",
+        "file": "index.js",
+        "line": 9,
+        "scope": "getDocument",
+        "description": "Lookup filters only by document id."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "index.js",
+        "line": 9,
+        "description": "The predicate omits actor.tenantId."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "Attacker has any tenant account and knows another document id."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "tenant-a user",
+      "payloads": [
+        "getDocument({tenantId:\"tenant-a\"},\"doc-b\")"
+      ],
+      "instructions": [
+        "Call the local function with tenant-a and doc-b."
+      ],
+      "observed_result": "The function returns tenant-b's doc-b."
+    },
+    "remediation": {
+      "strategy": "Bind the final lookup to actor.tenantId and add a cross-tenant regression test."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "medium",
+        "reason": "Requires authentication and a document id."
+      },
+      "impact": {
+        "score": "high",
+        "reason": "Discloses another tenant's document."
+      },
+      "overall_severity": "high"
+    },
+    "confidence": {
+      "score": "high",
+      "reason": "Direct synthetic source path."
+    }
+  },
+  {
+    "verdict": "confirmed",
+    "fingerprint": "tenant-documents.false-update",
+    "title": "Synthetic false positive on safe update",
+    "description": "Intentional scorer decoy against a sibling path that already enforces tenant ownership.",
+    "root_cause": "updateDocument in index.js allegedly omits tenant ownership, allowing cross-tenant mutation.",
+    "intended_behavior": "Updates must bind document id to the authenticated tenant.",
+    "trace": [
+      {
+        "kind": "entrypoint",
+        "file": "index.js",
+        "line": 14,
+        "scope": "updateDocument",
+        "description": "Caller supplies actor and document id."
+      },
+      {
+        "kind": "sink",
+        "file": "index.js",
+        "line": 15,
+        "scope": "updateDocument",
+        "description": "Synthetic report incorrectly claims the tenant predicate is absent."
+      }
+    ],
+    "evidence": [
+      {
+        "file": "index.js",
+        "line": 16,
+        "description": "Intentional false-positive anchor."
+      }
+    ],
+    "conditions": [
+      {
+        "kind": "authentication_level",
+        "description": "Authenticated tenant account."
+      }
+    ],
+    "execution": {
+      "attacker_perspective": "tenant-a user",
+      "payloads": [
+        "updateDocument({tenantId:\"tenant-a\"},\"doc-b\",\"x\")"
+      ],
+      "instructions": [
+        "Attempt cross-tenant update."
+      ],
+      "observed_result": "Synthetic report intentionally claims success although the source is safe."
+    },
+    "remediation": {
+      "strategy": "No real fix; this is a scorer decoy."
+    },
+    "severity": {
+      "likelihood": {
+        "score": "low",
+        "reason": "Intentional false record."
+      },
+      "impact": {
+        "score": "medium",
+        "reason": "Claimed cross-tenant mutation."
+      },
+      "overall_severity": "low"
+    },
+    "confidence": {
+      "score": "low",
+      "reason": "Intentional scorer decoy."
+    }
+  }
+]

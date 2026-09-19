@@ -2,88 +2,80 @@
 
 The CURRENT_GATE block is the only implementation gate authorized by this roadmap without explicit reprioritization.
 
-<!-- CURRENT_GATE_START -->
-## Gate 0 — Durable GitHub memory and upstream baseline
+## Completed gates
 
-Status: Ready for review/merge; local checks green, PR CI required at merge  
-Issue: #1  
+- Gate 0 — Durable GitHub memory and upstream baseline. Merged in 707d2e7305212bc76045217b4bdf6f36acf44fb3.
+
+<!-- CURRENT_GATE_START -->
+## Gate 1 — Pinned baseline and evaluation harness
+
+Status: In progress — deterministic provider-neutral foundation
+Issue: #3
 Upstream baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
 
 ### Goal
 
-Make GitHub a reliable, low-context project memory before changing audit behavior or adding hosted infrastructure.
+Measure the unmodified upstream workflow before refactoring its methodology.
 
 ### Scope
 
-- Root AGENTS.md adapted to this project.
-- Full project-memory protocol.
-- Concise state, plan, test strategy, charter, decisions, lessons, and history structure.
-- Gate issue + focused branch/PR workflow.
-- Zero-dependency memory invariant checker.
-- CI running memory checks and existing upstream validator regressions.
-- Detailed upstream/research baseline archived under history.
+- Three synthetic pre-registered cases: vulnerable+decoy, clean/decoy, and deployment-fact needs-validation.
+- Provider-neutral run records.
+- Deterministic scoring for detection, verdict correctness, confirmed precision, decoy hits, coverage, and optional usage telemetry.
+- Tests and CI.
+- Real provider/model baseline runs only after explicit authorization for any external billing.
 
 ### Acceptance
 
-- Required memory files exist and memory routing is documented.
-- STATE exposes one current gate, blockers, evidence status, and one next action.
-- PLAN exposes exactly one CURRENT_GATE block.
-- npm run check:memory passes.
-- npm run check passes, including the existing Cloudflare validator suites.
-- CI runs the same full check.
-- The Gate 0 PR records evidence and next concrete gate.
-- No Cloudflare audit-methodology behavior change is included.
+Deterministic foundation:
+- at least three cases exist and validate;
+- npm run check:evals passes;
+- a synthetic scoring run proves TP/FP/decoy/coverage semantics;
+- npm run check preserves upstream validator and memory checks;
+- CI is green;
+- upstream audit methodology remains unchanged.
+
+Full Gate 1 exit:
+- an explicitly authorized provider/model matrix is defined;
+- unchanged-skill runs are captured and scored;
+- baseline evidence is archived under history;
+- Gate 2 requirements are derived from evidence.
 
 ### Non-goals
 
 - No prompt/attack-class refactor.
-- No hosted server implementation.
-- No database/event store.
-- No sandbox provider.
-- No MCP server.
-- No dedup, cross-repo trace, contextual judgment, or fixer.
+- No server/database/orchestrator.
+- No sandbox or MCP server.
+- No automated fixes.
+- No universal recall claims from seeded fixtures.
 
 ### Exit
 
-Gate 0 exits only when required evidence is green and durable memory points to Gate 1.
+Gate 1 exits only after the deterministic foundation is green and at least one explicitly authorized real provider/model baseline is archived.
 <!-- CURRENT_GATE_END -->
 
 ## Queued roadmap
 
-These gates are directional and may be revised by evidence. Do not implement them while Gate 0 is current.
-
-### Gate 1 — Pinned baseline and eval harness
-
-Measure the unmodified upstream workflow before refactoring it. Establish reproducible fixtures for finding precision, coverage behavior, malformed worker output, refusal/error handling, and cost/context telemetry where the host exposes it.
-
 ### Gate 2 — Owned contracts and durable persistence
-
-Define versioned owned contracts for runs, assignments, coverage units, candidates, findings, evidence requirements, and worker outcomes. Add the minimum persistent state/event model. Preserve the portable skill as a supported interface.
+Define versioned owned contracts and the minimum persistent state/event model.
 
 ### Gate 3 — Minimal hosted Recon → Hunt → Validate harness
-
-Implement stateless workers behind an orchestrator. The service, not the model, owns transitions, budgets, independence rules, retries, and canonical state.
+Implement stateless workers behind a deterministic orchestrator.
 
 ### Gate 4 — Scoped/PR audit path and context compiler
-
-Make diff/subsystem review the default cost-effective product path. Compile minimal task context from architecture, assigned units, relevant source, selected methodology, and output contracts.
+Make diff/subsystem review the default cost-effective path.
 
 ### Gate 5 — Sandboxed local validation and immutable evidence
-
-Add a hostile-target execution boundary, immutable source snapshots, bounded execution, artifact promotion, evidence hashes, and explicit proof provenance.
+Add hostile-target execution isolation and proof provenance.
 
 ### Gate 6 — MCP/plugin interface
+Expose user-intent audit tools while keeping privileged internals private.
 
-Expose user-intent tools for creating, planning, advancing, inspecting, and cancelling audits. Keep privileged internal state transitions and generic shell execution private.
-
-### Gate 7 — Evidence requests, external advisory data, and contextual judgment
-
-Turn needs-validation blockers into resumable evidence requests. Add trusted external providers for deployment context and advisory/CVE evidence without giving target-controlled sandboxes Internet access.
+### Gate 7 — Evidence requests, advisory data, and contextual judgment
+Resolve external facts without weakening target sandbox isolation.
 
 ### Gate 8 — ChatGPT UI and reporting
-
-Add an MCP App/dashboard for coverage, findings, evidence traces, blockers, budget/cost, and report export while keeping the core usable without UI.
+Add coverage/finding/evidence UI and exports.
 
 ### Gate 9 — Scale only when measured
-
-Add dedicated gapfill, dedup, fleet scheduling, cross-repository tracing, multiple provider strategies, and automated fixing only after measured need and an accepted decision.
+Add gapfill, dedup, fleet scheduling, cross-repo tracing, provider strategies, and fixing only after measured need.

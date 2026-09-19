@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "id": "trusted-proxy-identity",
+  "title": "Proxy identity depends on deployment facts",
+  "description": "Source trusts a proxy header, but ingress exclusivity/header stripping are absent from source.",
+  "upstream_baseline": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
+  "target": {
+    "root": "repo",
+    "recommended_profile": "quick"
+  },
+  "expected_findings": [
+    {
+      "id": "proxy-header-trust",
+      "expected_verdict": "needs_validation",
+      "anchors": [
+        {
+          "file": "index.js",
+          "scope": "resolveIdentity"
+        }
+      ]
+    }
+  ],
+  "decoys": [
+    {
+      "id": "health",
+      "anchors": [
+        {
+          "file": "index.js",
+          "scope": "health"
+        }
+      ]
+    }
+  ],
+  "coverage_obligations": [
+    {
+      "id": "proxy-boundary",
+      "selectors": {
+        "surface_contains": "HTTP requests",
+        "attack_class_contains": "Host and forwarded-header trust"
+      }
+    }
+  ]
+}

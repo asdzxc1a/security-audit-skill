@@ -1,0 +1,88 @@
+[
+  {
+    "coverage_id": "surface-read::boundary-tenant::subsystem-docs::attack-access-control",
+    "canonical_refs": {
+      "surface": "surface-read",
+      "boundary": "boundary-tenant",
+      "subsystem": "subsystem-docs",
+      "attack_class": "attack-access-control"
+    },
+    "surface": "GET /documents/:id",
+    "boundary": "tenant ownership",
+    "subsystem": "documents",
+    "attack_class": "Access control",
+    "starting_paths": [
+      "index.js"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "demo-read",
+    "reviewed_paths": [
+      "index.js"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "demo-read",
+        "reviewed_paths": [
+          "index.js"
+        ],
+        "invariant": "Read must bind tenant ownership.",
+        "method": "source",
+        "result": "Read lookup omits tenantId.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "tenant-documents.cross-tenant-read"
+    ],
+    "unresolved": []
+  },
+  {
+    "coverage_id": "surface-update::boundary-tenant::subsystem-docs::attack-access-control",
+    "canonical_refs": {
+      "surface": "surface-update",
+      "boundary": "boundary-tenant",
+      "subsystem": "subsystem-docs",
+      "attack_class": "attack-access-control"
+    },
+    "surface": "PATCH /documents/:id",
+    "boundary": "tenant ownership",
+    "subsystem": "documents",
+    "attack_class": "Access control",
+    "starting_paths": [
+      "index.js"
+    ],
+    "ordinary_attack_class_block": "ATTACK-CLASSES.md#Access control",
+    "selected_companion_blocks": [],
+    "excluded_blocks": [],
+    "prior_status": "none",
+    "attempts": [],
+    "wave": 1,
+    "status": "candidate",
+    "agent_id": "demo-update",
+    "reviewed_paths": [
+      "index.js"
+    ],
+    "local_checks": [
+      {
+        "agent_id": "demo-update",
+        "reviewed_paths": [
+          "index.js"
+        ],
+        "invariant": "Update must bind tenant ownership.",
+        "method": "source",
+        "result": "Synthetic demo intentionally promotes the safe sibling.",
+        "artifact": null
+      }
+    ],
+    "result_fingerprints": [
+      "tenant-documents.false-update"
+    ],
+    "unresolved": []
+  }
+]
