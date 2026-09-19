@@ -103,6 +103,25 @@ Tests must prove:
 - partial coverage can preserve final-verified findings but cannot become complete;
 - blocked/deferred coverage cannot produce `run_completed`.
 
+### Gate 3d restart/resume orchestration
+
+Covered by `npm run check:domain`.
+
+Tests must prove:
+
+- assignment creation rejects malformed/oversized task receipts;
+- assignment completion rejects missing/oversized result receipts and result receipts on failed outcomes;
+- task and result receipts survive event-store restart/projection;
+- a completed hunter receipt resumes without a second hunter invocation;
+- a planned assignment executes its original durable task receipt;
+- an in-progress assignment becomes `orchestrator_interrupted` and retries with a fresh worker;
+- a completed critic receipt resumes without rerunning that critic;
+- interrupted critic retry preserves its original `post_wave`/ `final_clean` round;
+- completed candidate-verifier and final-verifier receipts resume without duplicate verification;
+- a durable critic failure reconstructs/preserves an incomplete reason after restart;
+- persisted incomplete reasons prevent `run_completed` at the reducer boundary;
+- full fresh and resumed runs use the same phase-driven engine.
+
 ### Full repository
 `npm run check`
 
