@@ -47,9 +47,9 @@ Before memory-only edits, full repository check:
 
 - upstream validators: 65/65 PASS;
 - eval/adapter tests: 13/13 PASS;
-- domain/storage/orchestrator tests: 69/69 PASS;
+- domain/storage/orchestrator tests: 71/71 PASS;
 - strict TypeScript compile: PASS;
 - npm audit: 0 vulnerabilities;
 - diff whitespace check: PASS.
 
-New regression tests cover terminal schema-v2 replay without historical file rewrite, active schema-v2 fail-closed terminalization with zero worker calls, mixed v2/v3 restart readability, and 260 distinct incomplete reasons summarized without wedging.
+New regression tests cover terminal schema-v2 replay with a historical successful assignment and no file rewrite, active schema-v2 fail-closed terminalization with zero worker calls, mixed v2/v3 restart readability, tampered v2 checksum rejection before upcast, unsupported historical schema rejection, and 260 distinct incomplete reasons summarized without wedging.
