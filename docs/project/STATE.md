@@ -17,9 +17,9 @@ Updated: 2026-09-19
 - Gate: 1 — Pinned baseline and evaluation harness
 - Active issue: #3
 - Branch: gate-1/eval-harness
-- PR: not opened yet
+- PR: #4
 - Current bounded subtask: deterministic provider-neutral eval corpus/scorer
-- Status: in progress
+- Status: deterministic foundation ready for review; Gate 1 remains open
 
 ## Blockers
 
@@ -31,8 +31,8 @@ Updated: 2026-09-19
 - Gate 0 memory/CI infrastructure is merged.
 - The fork remains pinned to the upstream methodology baseline.
 - No prompt, companion, finding-schema, or coverage-schema behavior change is part of this subtask.
-- Eval harness checks have not yet been run on this branch.
+- Fresh-clone npm run check: PASS. Upstream validators 65/65 PASS; eval corpus 3 cases valid; eval tests 5/5 PASS.
 
 ## Next action
 
-Finish the deterministic eval corpus/scorer, run npm run check from a fresh branch clone, open the focused Gate 1 PR, and record the remaining provider-baseline authorization requirement in the handoff.
+Review/merge PR #4. Then define the first real provider/model baseline matrix; obtain explicit authorization before any run that can incur external model billing.
