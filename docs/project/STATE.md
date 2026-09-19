@@ -38,15 +38,17 @@ Fresh-clone full repository check on the Gate 2 branch:
 - upstream Cloudflare validators: 65/65 PASS
 - Gate 1 eval/adapter tests: 13/13 PASS
 - strict TypeScript compile: PASS
-- Gate 2 reducer tests: 10/10 PASS
+- Gate 2 reducer tests: 15/15 PASS
 - npm dependency audit during install: 0 vulnerabilities
 
 Reducer evidence includes:
 
 - provider errors cannot resolve coverage as clean;
-- hunter cannot validate its own candidate;
-- final verifier must be fresh;
-- needs_validation requires durable handoff evidence;
+- only hunters may own coverage and coverage/candidate IDs are unique;
+- requeued coverage requires a fresh hunter;
+- hunter cannot be assigned to validate its own candidate;
+- final verifier assignment must be fresh;
+- needs_validation requires durable handoff evidence that cannot silently close without revalidation;
 - run-blocking evidence prevents completion;
 - strict worker budget enforcement;
 - unvalidated candidates block phase progression;
