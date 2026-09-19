@@ -43,3 +43,9 @@ Implication: preserve the unresolved fact and a safe way to resolve it. Do not g
 The first real Claude baseline attempt used a source-only tool list but the host still auto-loaded user-configured MCP servers. The run was cancelled before accepting evidence.
 
 Implication: a baseline/worker adapter must isolate not only model tools but also host-level MCP, plugins, skills, project/user settings, browser integrations, memory, and other ambient capability sources. Tool restriction alone is not a complete isolation boundary.
+
+## L-008 — Configuration/auth status is not provider readiness
+
+A Claude Code baseline host reported itself logged in during a static auth-status probe, but the first isolated inference attempt later failed with a 401 invalid OAuth token before using any model tokens.
+
+Implication: host adapters need both a static capability/config probe and a minimal authenticated inference probe before launching a longer baseline. "Logged in" is not enough evidence that the provider is operational.
