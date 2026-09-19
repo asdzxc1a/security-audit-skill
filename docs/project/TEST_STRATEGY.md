@@ -156,6 +156,8 @@ Tests/checks must prove:
 - active schema-v2 histories with legacy assignments fail-close incomplete on resume with zero worker calls;
 - mixed v2/v3 history remains replayable after explicit incomplete terminalization;
 - unsupported domain schema versions still fail closed;
+- v3→v2 domain-schema downgrade inside one stream fails closed;
+- schema-v2 assignment outcomes reject v3-only outcome kinds before upcast;
 - incomplete-reason overflow is summarized deterministically and cannot wedge terminalization;
 - durable Decision IDs are unique;
 - durable Lesson IDs are unique.
