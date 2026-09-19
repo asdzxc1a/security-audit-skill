@@ -129,3 +129,31 @@ Persistence added later must store/replay these accepted events without changing
 ### Consequences
 
 Provider-specific SDK/result types remain outside the domain layer. Database schemas and MCP tools will project owned state rather than become alternate authorities. Event-store work in the next slice must prove replay equivalence against the reducer.
+
+
+## D-007 — Accepted event history is canonical persisted state; projections are rebuildable
+
+Status: Accepted  
+Date: 2026-09-19
+
+### Context
+
+D-006 makes owned audit events plus the deterministic reducer authoritative for audit truth. Gate 2b needs durable restart/replay without allowing a database schema, cached snapshot, or provider response to become a second state machine.
+
+### Decision
+
+Persistence stores immutable reducer-accepted events in strict run sequence.
+
+Canonical current state is reconstructed by replaying those events through the domain reducer. Read projections may reshape that state for consumers, but they are disposable and rebuildable.
+
+The first reference persistence adapter uses one atomically published event file per sequence, a checksum chain, and a durable `HEAD` witness so restart can detect corruption, gaps, and tail truncation. Exact append retries are idempotent.
+
+This file-backed adapter proves semantics; it is not a commitment to the eventual production database technology.
+
+### Consequences
+
+- reducer-rejected events must never be persisted;
+- storage integrity failures fail closed;
+- persistence migrations must preserve event order and payload meaning;
+- future database tables, caches, and projectors may optimize reads but cannot introduce alternate transition rules;
+- Gate 3 orchestration writes owned events through an event-store interface rather than mutating projected state directly.
