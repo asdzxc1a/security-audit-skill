@@ -95,6 +95,26 @@ export function loadMethodologyCatalog(rootDirectory: string): MethodologyCatalo
   return Object.freeze({ blocks });
 }
 
+function validateMethodologyBlock(block: MethodologyBlock): void {
+  if (
+    !block ||
+    !isSafeRepositoryPath(block.file) ||
+    typeof block.heading !== "string" ||
+    block.heading.length === 0 ||
+    block.ref !== block.file + "#" + block.heading ||
+    !Number.isInteger(block.level) ||
+    block.level < 2 ||
+    block.level > 4
+  ) {
+    throw new MethodologyCatalogError("invalid methodology block metadata");
+  }
+  const bytes = Buffer.byteLength(block.content, "utf8");
+  const sha256 = sha256Hex(Buffer.from(block.content, "utf8"));
+  if (block.bytes !== bytes || block.sha256 !== sha256) {
+    throw new MethodologyCatalogError("methodology block integrity mismatch: " + block.ref);
+  }
+}
+
 export function selectMethodologyBlocks(
   catalog: MethodologyCatalog,
   refs: readonly string[],
@@ -107,6 +127,7 @@ export function selectMethodologyBlocks(
   return unique.map((ref) => {
     const block = catalog.blocks.get(ref);
     if (!block) throw new MethodologyCatalogError("unknown methodology block: " + ref);
+    validateMethodologyBlock(block);
     return block;
   });
 }
