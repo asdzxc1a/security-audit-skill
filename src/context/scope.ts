@@ -11,8 +11,13 @@ export class AuditScopeError extends Error {
 const PROJECT_MEMORY_PREFIXES = ["docs/project/", ".eval-runs/", ".eval-work/"] as const;
 const PROJECT_MEMORY_FILES = new Set(["AGENTS.md"]);
 
-function uniqueSortedPaths(values: readonly string[], label: string): string[] {
+function uniqueSortedPaths(
+  values: readonly string[],
+  label: string,
+  maxItems: number,
+): string[] {
   if (!Array.isArray(values)) throw new AuditScopeError(label + " must be an array");
+  if (values.length > maxItems) throw new AuditScopeError(label + " exceeds item limit");
   const result = [...values];
   for (const value of result) {
     if (!isSafeRepositoryPath(value)) {
@@ -46,24 +51,33 @@ export function resolveAuditScope(snapshot: SourceSnapshot, scope: AuditScope): 
 
   switch (scope.mode) {
     case "paths":
-      roots = uniqueSortedPaths(scope.roots, "scope root");
+      roots = uniqueSortedPaths(scope.roots, "scope root", 1024);
       if (roots.length === 0) throw new AuditScopeError("paths scope requires at least one root");
       candidates = allPaths.filter((filePath) => roots.some((root) => matchesRoot(filePath, root)));
       break;
     case "diff": {
-      if (typeof scope.baseRef !== "string" || scope.baseRef.trim() === "") {
-        throw new AuditScopeError("diff scope requires baseRef");
+      if (
+        typeof scope.baseRef !== "string" ||
+        scope.baseRef.trim() !== scope.baseRef ||
+        scope.baseRef.length === 0 ||
+        Buffer.byteLength(scope.baseRef, "utf8") > 1024 ||
+        /[\u0000-\u001f\u007f]/.test(scope.baseRef)
+      ) {
+        throw new AuditScopeError("diff scope requires bounded trimmed baseRef");
       }
-      if (typeof scope.headRef !== "string" || scope.headRef.trim() === "") {
-        throw new AuditScopeError("diff scope requires headRef");
-      }
-      if (scope.baseRef.trim() !== scope.baseRef || scope.headRef.trim() !== scope.headRef) {
-        throw new AuditScopeError("diff refs must be trimmed");
+      if (
+        typeof scope.headRef !== "string" ||
+        scope.headRef.trim() !== scope.headRef ||
+        scope.headRef.length === 0 ||
+        Buffer.byteLength(scope.headRef, "utf8") > 1024 ||
+        /[\u0000-\u001f\u007f]/.test(scope.headRef)
+      ) {
+        throw new AuditScopeError("diff scope requires bounded trimmed headRef");
       }
       baseRef = scope.baseRef;
       headRef = scope.headRef;
       roots = uniqueSortedPaths(scope.roots, "scope root");
-      changedPaths = uniqueSortedPaths(scope.changedPaths, "changed");
+      changedPaths = uniqueSortedPaths(scope.changedPaths, "changed", 50_000);
       const changed = new Set(changedPaths);
       candidates = allPaths.filter(
         (filePath) =>
