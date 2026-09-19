@@ -12,6 +12,14 @@ for(const m of["<!-- CURRENT_GATE_START -->","<!-- CURRENT_GATE_END -->"])if(pla
 const a=plan.indexOf("<!-- CURRENT_GATE_START -->"),b=plan.indexOf("<!-- CURRENT_GATE_END -->"),gate=a>=0&&b>a?plan.slice(a,b):"";
 for(const x of["### Goal","### Scope","### Acceptance","### Non-goals","### Exit"])if(!gate.includes(x))errors.push("current gate missing "+x);
 if(!/Issue:\s*#\d+/.test(gate))errors.push("current gate missing issue");
+function requireUniqueIds(rel,prefix){
+  const text=docs.get(rel)||"";
+  const ids=[...text.matchAll(new RegExp("^## "+prefix+"-(\\d{3})\\b","gm"))].map(m=>prefix+"-"+m[1]);
+  const seen=new Set();
+  for(const id of ids){if(seen.has(id))errors.push(rel+" contains duplicate "+id);seen.add(id)}
+}
+requireUniqueIds("docs/project/DECISIONS.md","D");
+requireUniqueIds("docs/project/LESSONS.md","L");
 const secret=[/\bgh[opsu]_[A-Za-z0-9_]{20,}\b/g,/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g,/\bsk-[A-Za-z0-9_-]{20,}\b/g,/\bAKIA[0-9A-Z]{16}\b/g];
 for(const [r,t] of docs)for(const p of secret){p.lastIndex=0;if(p.test(t))errors.push(r+" appears to contain a secret")}
 if(errors.length){errors.forEach(e=>console.error("ERROR:",e));console.error("FAIL:",errors.length,"memory invariant(s)");process.exit(1)}
