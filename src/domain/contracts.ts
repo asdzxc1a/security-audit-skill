@@ -1,0 +1,262 @@
+export const DOMAIN_SCHEMA_VERSION = 1 as const;
+
+export type DomainSchemaVersion = typeof DOMAIN_SCHEMA_VERSION;
+
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | readonly JsonValue[] | { readonly [key: string]: JsonValue };
+
+export type AuditProfile = "quick" | "standard" | "deep";
+
+export type ActiveRunStatus =
+  | "created"
+  | "reconnaissance"
+  | "coverage_planning"
+  | "hunting"
+  | "candidate_validation"
+  | "record_verification"
+  | "reporting";
+
+export type TerminalRunStatus = "complete" | "incomplete" | "cancelled" | "failed";
+export type RunStatus = ActiveRunStatus | TerminalRunStatus;
+
+export type WorkerOutcomeKind =
+  | "valid_result"
+  | "malformed_result"
+  | "model_refusal"
+  | "provider_error"
+  | "timeout"
+  | "permission_denied"
+  | "sandbox_failure"
+  | "cancelled";
+
+export interface AdapterRef {
+  readonly adapter: string;
+  readonly model: string | null;
+  readonly metadata: Readonly<Record<string, JsonValue>>;
+}
+
+export interface WorkerOutcome {
+  readonly kind: WorkerOutcomeKind;
+  readonly detail: string | null;
+  readonly adapter: AdapterRef | null;
+}
+
+export type AssignmentKind =
+  | "recon"
+  | "hunter"
+  | "coverage_critic"
+  | "candidate_verifier"
+  | "record_verifier";
+
+export type AssignmentStatus = "planned" | "in_progress" | "succeeded" | "failed" | "cancelled";
+
+export interface WorkerAssignment {
+  readonly assignmentId: string;
+  readonly kind: AssignmentKind;
+  readonly workerId: string;
+  readonly coverageIds: readonly string[];
+  readonly candidateId: string | null;
+  readonly status: AssignmentStatus;
+  readonly outcome: WorkerOutcome | null;
+  readonly createdSequence: number;
+  readonly completedSequence: number | null;
+}
+
+export type CoverageStatus =
+  | "planned"
+  | "in_progress"
+  | "covered"
+  | "candidate"
+  | "blocked"
+  | "deferred"
+  | "out_of_scope"
+  | "not_applicable";
+
+export interface CoverageUnit {
+  readonly coverageId: string;
+  readonly status: CoverageStatus;
+  readonly assignmentId: string | null;
+  readonly candidateIds: readonly string[];
+  readonly unresolved: readonly string[];
+}
+
+export type CandidateVerdict = "unvalidated" | "confirmed" | "needs_validation" | "rejected";
+
+export interface Candidate {
+  readonly candidateId: string;
+  readonly fingerprint: string;
+  readonly coverageId: string;
+  readonly originAssignmentId: string;
+  readonly originWorkerId: string;
+  readonly verdict: CandidateVerdict;
+  readonly candidateVerifierAssignmentId: string | null;
+  readonly finalVerifierAssignmentId: string | null;
+}
+
+export type EvidenceRequirementKind =
+  | "sandbox_capability"
+  | "deployment_fact"
+  | "runtime_fact"
+  | "identity_fact"
+  | "advisory_fact"
+  | "provider_readiness"
+  | "artifact_integrity";
+
+export type EvidenceRequirementScope = "run_blocking" | "finding_handoff";
+export type EvidenceRequirementStatus = "open" | "resolved";
+
+export interface EvidenceRequirement {
+  readonly requirementId: string;
+  readonly kind: EvidenceRequirementKind;
+  readonly scope: EvidenceRequirementScope;
+  readonly status: EvidenceRequirementStatus;
+  readonly candidateId: string | null;
+  readonly description: string;
+  readonly resolution: string | null;
+}
+
+export interface AuditBudget {
+  readonly maxWorkerInvocations: number | null;
+  readonly spentWorkerInvocations: number;
+}
+
+export interface AuditRunState {
+  readonly schemaVersion: DomainSchemaVersion;
+  readonly runId: string;
+  readonly sourceSnapshotId: string;
+  readonly profile: AuditProfile;
+  readonly scopePaths: readonly string[];
+  readonly status: RunStatus;
+  readonly sequence: number;
+  readonly budget: AuditBudget;
+  readonly assignments: Readonly<Record<string, WorkerAssignment>>;
+  readonly coverageUnits: Readonly<Record<string, CoverageUnit>>;
+  readonly candidates: Readonly<Record<string, Candidate>>;
+  readonly evidenceRequirements: Readonly<Record<string, EvidenceRequirement>>;
+  readonly terminalReason: string | null;
+}
+
+interface EventBase<T extends string> {
+  readonly schemaVersion: DomainSchemaVersion;
+  readonly eventId: string;
+  readonly runId: string;
+  readonly sequence: number;
+  readonly type: T;
+}
+
+export interface RunCreatedEvent extends EventBase<"run_created"> {
+  readonly sourceSnapshotId: string;
+  readonly profile: AuditProfile;
+  readonly scopePaths: readonly string[];
+  readonly maxWorkerInvocations: number | null;
+}
+
+export interface PhaseAdvancedEvent extends EventBase<"phase_advanced"> {
+  readonly to: ActiveRunStatus;
+}
+
+export interface CoverageUnitRegisteredEvent extends EventBase<"coverage_unit_registered"> {
+  readonly coverageId: string;
+}
+
+export interface AssignmentCreatedEvent extends EventBase<"assignment_created"> {
+  readonly assignmentId: string;
+  readonly kind: AssignmentKind;
+  readonly workerId: string;
+  readonly coverageIds: readonly string[];
+  readonly candidateId: string | null;
+}
+
+export interface AssignmentStartedEvent extends EventBase<"assignment_started"> {
+  readonly assignmentId: string;
+}
+
+export interface AssignmentCompletedEvent extends EventBase<"assignment_completed"> {
+  readonly assignmentId: string;
+  readonly outcome: WorkerOutcome;
+}
+
+export interface CoverageResolvedEvent extends EventBase<"coverage_resolved"> {
+  readonly coverageId: string;
+  readonly assignmentId: string;
+  readonly resolution: "covered" | "candidate" | "blocked";
+  readonly candidateIds: readonly string[];
+  readonly unresolved: readonly string[];
+}
+
+export interface CoverageRequeuedEvent extends EventBase<"coverage_requeued"> {
+  readonly coverageId: string;
+  readonly assignmentId: string;
+  readonly reason: string;
+}
+
+export interface CoverageClassifiedEvent extends EventBase<"coverage_classified"> {
+  readonly coverageId: string;
+  readonly status: "deferred" | "out_of_scope" | "not_applicable";
+  readonly reason: string;
+}
+
+export interface CandidateRegisteredEvent extends EventBase<"candidate_registered"> {
+  readonly candidateId: string;
+  readonly fingerprint: string;
+  readonly coverageId: string;
+  readonly originAssignmentId: string;
+}
+
+export interface CandidateDispositionRecordedEvent extends EventBase<"candidate_disposition_recorded"> {
+  readonly candidateId: string;
+  readonly verdict: Exclude<CandidateVerdict, "unvalidated">;
+  readonly verifierAssignmentId: string;
+}
+
+export interface CandidateFinalVerifiedEvent extends EventBase<"candidate_final_verified"> {
+  readonly candidateId: string;
+  readonly verifierAssignmentId: string;
+}
+
+export interface EvidenceRequirementOpenedEvent extends EventBase<"evidence_requirement_opened"> {
+  readonly requirementId: string;
+  readonly kind: EvidenceRequirementKind;
+  readonly scope: EvidenceRequirementScope;
+  readonly candidateId: string | null;
+  readonly description: string;
+}
+
+export interface EvidenceRequirementResolvedEvent extends EventBase<"evidence_requirement_resolved"> {
+  readonly requirementId: string;
+  readonly resolution: string;
+}
+
+export interface RunCompletedEvent extends EventBase<"run_completed"> {}
+
+export interface RunMarkedIncompleteEvent extends EventBase<"run_marked_incomplete"> {
+  readonly reason: string;
+}
+
+export interface RunFailedEvent extends EventBase<"run_failed"> {
+  readonly reason: string;
+}
+
+export interface RunCancelledEvent extends EventBase<"run_cancelled"> {
+  readonly reason: string;
+}
+
+export type AuditEvent =
+  | RunCreatedEvent
+  | PhaseAdvancedEvent
+  | CoverageUnitRegisteredEvent
+  | AssignmentCreatedEvent
+  | AssignmentStartedEvent
+  | AssignmentCompletedEvent
+  | CoverageResolvedEvent
+  | CoverageRequeuedEvent
+  | CoverageClassifiedEvent
+  | CandidateRegisteredEvent
+  | CandidateDispositionRecordedEvent
+  | CandidateFinalVerifiedEvent
+  | EvidenceRequirementOpenedEvent
+  | EvidenceRequirementResolvedEvent
+  | RunCompletedEvent
+  | RunMarkedIncompleteEvent
+  | RunFailedEvent
+  | RunCancelledEvent;
