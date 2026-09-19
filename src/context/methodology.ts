@@ -14,45 +14,51 @@ export class MethodologyCatalogError extends Error {
   }
 }
 
-interface Heading {
+interface Marker {
   readonly level: number;
   readonly text: string;
   readonly lineIndex: number;
 }
 
-function parseHeadings(lines: readonly string[]): Heading[] {
-  const headings: Heading[] = [];
+function parseMarkers(lines: readonly string[]): Marker[] {
+  const markers: Marker[] = [];
   for (let index = 0; index < lines.length; index++) {
-    const match = /^(#{2,4})\s+(.+?)\s*$/.exec(lines[index]);
-    if (!match) continue;
-    headings.push({ level: match[1].length, text: match[2], lineIndex: index });
+    const heading = /^(#{2,4})\s+(.+?)\s*$/.exec(lines[index]);
+    if (heading) {
+      markers.push({ level: heading[1].length, text: heading[2], lineIndex: index });
+      continue;
+    }
+    const label = /^\*\*([^*]+)\*\*(?:\s+\(subagent_type:[^)]+\))?\s*$/.exec(lines[index]);
+    if (label) {
+      markers.push({ level: 5, text: label[1], lineIndex: index });
+    }
   }
-  return headings;
+  return markers;
 }
 
 function parseDocument(file: string, content: string): MethodologyBlock[] {
   const lines = content.split(/\r?\n/);
-  const headings = parseHeadings(lines);
+  const markers = parseMarkers(lines);
   const blocks: MethodologyBlock[] = [];
 
-  for (let index = 0; index < headings.length; index++) {
-    const heading = headings[index];
+  for (let index = 0; index < markers.length; index++) {
+    const marker = markers[index];
     let end = lines.length;
-    for (let next = index + 1; next < headings.length; next++) {
-      if (headings[next].level <= heading.level) {
-        end = headings[next].lineIndex;
+    for (let next = index + 1; next < markers.length; next++) {
+      if (markers[next].level <= marker.level) {
+        end = markers[next].lineIndex;
         break;
       }
     }
-    const blockContent = lines.slice(heading.lineIndex, end).join("\n").trimEnd() + "\n";
+    const blockContent = lines.slice(marker.lineIndex, end).join("\n").trimEnd() + "\n";
     const bytes = Buffer.byteLength(blockContent, "utf8");
-    const ref = file + "#" + heading.text;
+    const ref = file + "#" + marker.text;
     blocks.push(
       Object.freeze({
         ref,
         file,
-        heading: heading.text,
-        level: heading.level,
+        heading: marker.text,
+        level: marker.level,
         sha256: sha256Hex(Buffer.from(blockContent, "utf8")),
         bytes,
         content: blockContent,
@@ -104,7 +110,7 @@ function validateMethodologyBlock(block: MethodologyBlock): void {
     block.ref !== block.file + "#" + block.heading ||
     !Number.isInteger(block.level) ||
     block.level < 2 ||
-    block.level > 4
+    block.level > 5
   ) {
     throw new MethodologyCatalogError("invalid methodology block metadata");
   }
