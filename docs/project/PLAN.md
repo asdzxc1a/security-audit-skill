@@ -5,11 +5,12 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 ## Completed gates
 
 - Gate 0 — Durable GitHub memory and upstream baseline. Merged in 707d2e7305212bc76045217b4bdf6f36acf44fb3.
+- Gate 1 deterministic evaluation foundation. Merged in 5b3421034420bd205c142acd3d92ae19bd9fbd42.
 
 <!-- CURRENT_GATE_START -->
 ## Gate 1 — Pinned baseline and evaluation harness
 
-Status: Deterministic foundation ready for review; provider baseline still pending
+Status: Source-only Claude adapter ready for review; real baseline pending
 Issue: #3
 Upstream baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
 
@@ -19,39 +20,43 @@ Measure the unmodified upstream workflow before refactoring its methodology.
 
 ### Scope
 
-- Three synthetic pre-registered cases: vulnerable+decoy, clean/decoy, and deployment-fact needs-validation.
-- Provider-neutral run records.
-- Deterministic scoring for detection, verdict correctness, confirmed precision, decoy hits, coverage, and optional usage telemetry.
-- Tests and CI.
-- Real provider/model baseline runs only after explicit authorization for any external billing.
+Current bounded subtask:
+
+- make incomplete/refused/failed runs durable without fake artifacts;
+- add a Claude Code host adapter with dry-run by default;
+- require explicit `--execute` plus positive budget cap for model execution;
+- construct a clean model workspace that excludes answer keys;
+- restrict the Gate 1 adapter to source inspection and agent delegation, with no Bash/target execution;
+- capture host stdout/stderr, usage telemetry when available, structured artifacts when valid, and deterministic score for complete runs;
+- test all command-building/failure-record semantics without calling the model.
+
+After this adapter is accepted, run the unchanged skill on the pre-registered corpus using an explicitly budget-authorized baseline matrix.
 
 ### Acceptance
 
-Deterministic foundation:
-- at least three cases exist and validate;
-- npm run check:evals passes;
-- a synthetic scoring run proves TP/FP/decoy/coverage semantics;
-- npm run check preserves upstream validator and memory checks;
+- incomplete/refused/failed run records validate without fake findings/coverage paths;
+- dry-run exposes the exact host/model/profile/source-only invocation;
+- execution cannot start without an explicit positive budget cap;
+- model workspace contains target + skill but not the answer key;
+- arbitrary Bash/target execution is not exposed by this adapter;
+- npm run check:evals and npm run check pass;
 - CI is green;
 - upstream audit methodology remains unchanged.
 
-Full Gate 1 exit:
-- an explicitly authorized provider/model matrix is defined;
-- unchanged-skill runs are captured and scored;
-- baseline evidence is archived under history;
-- Gate 2 requirements are derived from evidence.
+Full Gate 1 exit still requires at least one explicitly authorized real provider/model baseline to be captured and archived.
 
 ### Non-goals
 
 - No prompt/attack-class refactor.
-- No server/database/orchestrator.
-- No sandbox or MCP server.
+- No hosted server/database/orchestrator.
+- No production-grade target sandbox.
+- No MCP server.
 - No automated fixes.
 - No universal recall claims from seeded fixtures.
 
 ### Exit
 
-Gate 1 exits only after the deterministic foundation is green and at least one explicitly authorized real provider/model baseline is archived.
+Gate 1 exits only after the adapter is green and at least one explicit budget-authorized unchanged-skill baseline is archived.
 <!-- CURRENT_GATE_END -->
 
 ## Queued roadmap

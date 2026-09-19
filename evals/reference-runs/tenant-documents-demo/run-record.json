@@ -3,14 +3,13 @@
   "run_id": "tenant-documents-demo",
   "case_id": "tenant-documents",
   "upstream_baseline": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
+  "status": "complete",
   "source_ref": "fixture:tenant-documents:v1",
   "profile": "quick",
   "host": {
     "name": "synthetic-reference",
     "model": null
   },
-  "started_at": "2026-09-19T00:00:00Z",
-  "completed_at": "2026-09-19T00:00:01Z",
   "artifacts": {
     "findings": "findings.json",
     "coverage_ledger": "coverage-ledger.json"
@@ -31,5 +30,6 @@
     "sandbox_failure": 0,
     "cancelled": 0
   },
+  "host_error": null,
   "notes": "Intentional TP + false-positive decoy scoring fixture."
 }
