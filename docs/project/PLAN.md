@@ -9,62 +9,76 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 - Gate 2 — Provider-neutral contracts + deterministic fail-closed reducer.
 - Gate 2b — Durable accepted-event store + replay projections.
 - Gate 3a — Straight-through Recon → Hunt → candidate Validate orchestration. Merged as 5765eedfecffcce84b77794876186bc097106e15.
+- Gate 3b — Evidence-bearing bounded orchestration contracts. Merged as 8f3dee2cd3a71fe7db52081a3194a5c3885f2d63.
 
 <!-- CURRENT_GATE_START -->
-## Gate 3b — Orchestration trust hardening
+## Gate 3c — Critic convergence and final verification/reporting
 
 Status: Implementation/local evidence green; ready for review  
 Issue: #12
 
 ### Goal
 
-Close the post-merge trust defects from Gate 3a before adding more orchestration complexity.
+Close the full in-process audit lifecycle with owned semantic coverage, iterative coverage criticism/reassignment, independent final record verification, and reducer-gated terminal completion.
 
 ### Scope
 
-- bump owned domain/orchestration contracts to version 2;
-- persist bounded coverage evidence for covered/candidate/blocked resolutions;
-- persist bounded substantive candidate claims;
-- pass canonical candidate claim + all linked coverage IDs into candidate verification;
-- consolidate repeated fingerprints into one canonical candidate with explicit coverage links;
-- bound complete untrusted observations, strings, arrays, paths, checks, claims, and adapter metadata;
-- bound provider/malformed error detail;
-- reject oversized durable event envelopes before publication;
-- deep-copy evidence-bearing projections;
-- explicit runtime rejection of unknown event types.
+- bump domain/orchestration contracts to schema version 3;
+- recon returns semantic coverage definitions, never canonical IDs;
+- orchestrator assigns coverage IDs;
+- persist bounded surface/boundary/subsystem/attack-class/lifecycle/starting-path/methodology semantics;
+- reject semantic coverage aliases;
+- coverage critic receives immutable coverage snapshots;
+- quick requires one clean critic; standard/deep require two consecutive clean fresh critics;
+- critic can explicitly reopen covered/candidate/blocked/deferred units;
+- reopened work must use a fresh hunter;
+- candidate verifier persists a validated replacement claim + rationale for retained records;
+- final record verifier receives canonical validated claim, rationale, linked coverage, verdict, and open evidence handoffs;
+- final verifier can accept or reject with durable reason;
+- rejected needs_validation candidates close obsolete handoff requirements;
+- reporting transition + run completion remain reducer-gated.
 
 ### Acceptance
 
-- candidate verifier receives the substantive persisted claim;
-- evidence-free `covered` cannot become canonical coverage;
-- oversized observation cannot poison the durable event stream;
-- duplicate fingerprint across multiple coverage units creates one candidate linked to all units;
-- reducer independently enforces coverage evidence requirements;
-- event store independently rejects oversized envelopes before write;
+- semantic coverage identity is persisted and hunter-visible;
+- recon cannot choose canonical coverage IDs;
+- semantic alias coverage is rejected;
+- standard/deep cannot close without two clean fresh critics;
+- reassignment resets clean convergence and uses fresh hunters;
+- candidate coverage can be re-reviewed without duplicating an existing root cause;
+- blocked/deferred coverage cannot be hidden by a clean critic;
+- critic failure/budget exhaustion produces incomplete state;
+- retained candidate uses candidate-verifier-authored canonical claim/rationale;
+- final verifier is independent and receives the canonical record;
+- final accept/reject is persisted;
+- final rejection of needs_validation resolves obsolete handoff evidence;
+- reporting cannot complete while reducer invariants remain unresolved;
 - all existing upstream/eval/domain/storage/orchestrator tests remain green;
-- GitHub CI is green.
+- GitHub CI and review feedback are green.
 
 ### Non-goals
 
-- No coverage-critic/reassignment orchestration in this slice.
-- No final record-verification/reporting orchestration in this slice.
 - No provider SDK.
 - No context compiler.
+- No process-resume/recovery entrypoint in this slice.
 - No MCP server.
 - No sandbox.
-- No prompt/attack-class changes.
+- No Cloudflare prompt/attack-class changes.
 
 ### Exit
 
-Gate 3b exits when the focused hardening PR is CI-green and merged.
+Gate 3c exits when the focused PR is CI-green, review-clean, and merged.
 
-Next bounded Gate 3 slice: coverage-critic/reassignment waves and final record-verification/reporting orchestration, using the evidence-bearing v2 contracts.
+Next bounded Gate 3 slice: Gate 3d — resumable orchestration/recovery from durable event history, including interrupted assignment reconciliation without introducing alternate state semantics.
 <!-- CURRENT_GATE_END -->
 
 ## Queued roadmap
 
+### Gate 3d — Resumable orchestration and recovery
+Resume a nonterminal run from accepted event history. Reconcile interrupted assignments explicitly, preserve idempotency, and continue the correct workflow stage without replaying successful work.
+
 ### Gate 4 — Scoped/PR audit path and context compiler
-Make diff/subsystem review the default cost-effective path.
+Make diff/subsystem review the default cost-effective path and compile bounded worker context from owned semantic coverage.
 
 ### Gate 5 — Sandboxed local validation and immutable evidence
 Add hostile-target execution isolation and proof provenance.
