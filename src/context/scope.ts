@@ -39,6 +39,8 @@ export function resolveAuditScope(snapshot: SourceSnapshot, scope: AuditScope): 
   const includeProjectMemory = scope.includeProjectMemory === true;
 
   let roots: string[] = [];
+  let baseRef: string | null = null;
+  let headRef: string | null = null;
   let changedPaths: string[] = [];
   let candidates: string[] = [];
 
@@ -55,6 +57,11 @@ export function resolveAuditScope(snapshot: SourceSnapshot, scope: AuditScope): 
       if (typeof scope.headRef !== "string" || scope.headRef.trim() === "") {
         throw new AuditScopeError("diff scope requires headRef");
       }
+      if (scope.baseRef.trim() !== scope.baseRef || scope.headRef.trim() !== scope.headRef) {
+        throw new AuditScopeError("diff refs must be trimmed");
+      }
+      baseRef = scope.baseRef;
+      headRef = scope.headRef;
       roots = uniqueSortedPaths(scope.roots, "scope root");
       changedPaths = uniqueSortedPaths(scope.changedPaths, "changed");
       const changed = new Set(changedPaths);
@@ -92,6 +99,8 @@ export function resolveAuditScope(snapshot: SourceSnapshot, scope: AuditScope): 
   return Object.freeze({
     mode: scope.mode,
     roots: Object.freeze(roots),
+    baseRef,
+    headRef,
     changedPaths: Object.freeze(changedPaths),
     selectedPaths: Object.freeze(selectedPaths),
     excludedPaths: Object.freeze(excludedPaths.sort()),
