@@ -4,63 +4,64 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 
 ## Completed gates
 
-- Gate 0 — Durable GitHub memory and upstream baseline. Merged in 707d2e7305212bc76045217b4bdf6f36acf44fb3.
-- Gate 1 deterministic evaluation foundation. Merged in 5b3421034420bd205c142acd3d92ae19bd9fbd42.
+- Gate 0 — Durable GitHub memory and upstream baseline.
+- Gate 1 — Pinned eval harness + host-readiness measurement. Closed `incomplete_external_environment`: deterministic infrastructure is green; Claude was blocked by invalid OAuth, and Codex clean-host isolation requires credential-level action. No model-quality precision/recall claim is made.
 
 <!-- CURRENT_GATE_START -->
-## Gate 1 — Pinned baseline and evaluation harness
+## Gate 2 — Owned contracts and durable audit state
 
-Status: In progress — Claude baseline blocked by provider auth; second host path required
-Issue: #3
-Upstream baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
+Status: Queued pending Gate 1 closeout merge  
+Issue: #8
 
 ### Goal
 
-Measure the unmodified upstream workflow before refactoring its methodology.
+Move trust-critical audit state, authority, and transition rules out of model prompts into versioned provider-neutral application contracts.
 
 ### Scope
 
 Current bounded subtask:
 
-- preserve the isolated Claude provider-auth failure as baseline operational evidence;
-- do not repair credentials silently;
-- add a second host adapter/probe only if it can preserve ambient-config isolation and the source-only boundary;
-- require a minimal authenticated inference probe before any long baseline run;
-- keep the upstream Cloudflare methodology unchanged.
+- TypeScript-first hosted-domain package;
+- owned versioned contracts for audit runs, worker assignments/outcomes, audit events, coverage units, candidates/findings, and evidence requirements;
+- provider/host details represented only as adapter metadata;
+- deterministic event reducer;
+- explicit complete/incomplete terminal semantics;
+- invalid transitions fail closed;
+- tests for worker failures, unresolved candidates, and evidence blockers.
 
-Gate 1 still requires at least one completed real provider/model baseline before exit.
+No database in this first slice. Contract semantics come before persistence.
 
 ### Acceptance
 
-- the Claude 401 run is stored as failed operational evidence with null artifacts and zero-token usage;
-- raw transient session identifiers are not committed;
-- a second host path must include static capability checks plus authenticated inference readiness;
-- npm run check remains green;
-- upstream audit methodology remains unchanged.
-
-Full Gate 1 exit still requires at least one explicitly authorized real provider/model baseline to be captured and archived.
+- TypeScript compiles in CI;
+- contracts are versioned and provider-neutral;
+- reducer tests cover the valid lifecycle and reject invalid transitions;
+- refusal/provider-error/malformed outcomes cannot become clean coverage;
+- a run cannot become complete while unresolved candidate/evidence blockers remain;
+- all existing Cloudflare validators and Gate 1 eval tests remain green;
+- durable memory names the next persistence slice.
 
 ### Non-goals
 
 - No prompt/attack-class refactor.
-- No hosted server/database/orchestrator.
-- No production-grade target sandbox.
+- No model/provider SDK.
+- No production database in this first slice.
+- No sandbox.
 - No MCP server.
 - No automated fixes.
-- No universal recall claims from seeded fixtures.
 
 ### Exit
 
-Gate 1 exits only after the adapter is green and at least one explicit budget-authorized unchanged-skill baseline is archived.
+The contracts/reducer slice exits when its tests and full repository checks are green and the next durable-persistence subtask is recorded.
 <!-- CURRENT_GATE_END -->
 
 ## Queued roadmap
 
-### Gate 2 — Owned contracts and durable persistence
-Define versioned owned contracts and the minimum persistent state/event model.
+### Gate 2b — Minimum durable event store and projections
+Persist events and reconstruct current run/coverage/candidate state without changing reducer semantics.
 
 ### Gate 3 — Minimal hosted Recon → Hunt → Validate harness
-Implement stateless workers behind a deterministic orchestrator.
+Implement stateless workers behind the deterministic orchestrator.
 
 ### Gate 4 — Scoped/PR audit path and context compiler
 Make diff/subsystem review the default cost-effective path.

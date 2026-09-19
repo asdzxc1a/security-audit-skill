@@ -7,38 +7,42 @@ Updated: 2026-09-19
 - Repository: asdzxc1a/security-audit-skill
 - Upstream: cloudflare/security-audit-skill
 - Pinned methodology baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
-- Gate 0 memory foundation merged as 707d2e7305212bc76045217b4bdf6f36acf44fb3.
-- Gate 1 deterministic eval foundation merged as 5b3421034420bd205c142acd3d92ae19bd9fbd42.
-- Gate 1 source-only Claude baseline adapter merged as 44bf520d2b67099012c3c4313438536f253c40aa.
-- Gate 1 Claude ambient-host isolation hardening merged as f075eb5f87c080871db1f61e98d5b6f753d08f27.
+- Gate 0 memory foundation is complete.
+- Gate 1 deterministic eval, failure-preserving run records, and host-isolation evidence are complete.
+- Gate 1 closes as incomplete_external_environment: no clean real model-quality baseline is claimed.
+- Claude clean-host inference is blocked by invalid OAuth credentials.
+- Codex inference is live, but ambient host skill discovery contaminates the normal auth home; a clean home is unauthenticated.
 - Product direction: preserve the portable Cloudflare skill while building a persistent hosted security-research service exposed through MCP/plugin interfaces.
 - Durable memory: GitHub repository docs, issues, PRs, code, and test evidence. Chat is not project state.
 - Upstream audit methodology has not been intentionally changed in this fork.
 
 ## Current gate
 
-- Gate: 1 — Pinned baseline and evaluation harness
-- Active issue: #3
-- Branch: gate-1/claude-auth-failure-evidence
-- PR: not opened yet
-- Current bounded subtask: preserve the first isolated real-run provider failure and select the next operational host path
-- Status: in progress
+- Gate: 2 — Owned contracts and durable audit state
+- Active issue: #8
+- Branch: not started until Gate 1 closeout merges
+- PR: none
+- Current bounded subtask: provider-neutral TypeScript contracts + deterministic event reducer
+- Status: queued behind this closeout merge
 
 ## Blockers
 
-- Claude Code host isolation is now acceptable for the source-only baseline.
-- The isolated Claude baseline failed before inference with 401 invalid OAuth token; input/output tokens and reported cost were zero.
-- Claude credential repair would require an explicit credential/authentication flow.
-- Gate 1 still has no completed real model baseline.
+None known for the first Gate 2 repository-controlled subtask.
+
+External provider credentials/readiness remain adapter concerns and are not required to define the owned domain contracts.
 
 ## Verified evidence
 
-- The earlier ambient-MCP contamination is fixed: the isolated retry spawned no ambient MCP child process.
-- The isolated retry produced a valid failed run record with null artifacts and provider_error=1.
-- No findings/coverage result or score is claimed from the provider-auth failure.
-- Static Claude auth status was insufficient to prove provider readiness.
-- Codex CLI is installed and reports ChatGPT authentication; its multi-agent feature is stable/enabled, but its source-only capability boundary still needs an owned adapter/probe before use.
+- Gate 1 deterministic corpus/scorer is green.
+- Cloudflare upstream validator regressions remain green through Gate 1 changes.
+- Failure/refusal/provider-error runs are preserved without fake findings.
+- Claude ambient MCP contamination was detected, fixed, and regression-tested.
+- Isolated Claude inference failed with zero-token 401 provider error.
+- Codex minimal inference succeeded, but ambient user skill discovery remained even when user config/rules were ignored.
+- Clean temporary CODEX_HOME removes that ambient state but is not authenticated.
+- Detailed host matrix is archived under history.
+- Decision D-005 authorizes Gate 1 closeout as incomplete_external_environment without claiming a model-quality baseline.
 
 ## Next action
 
-Persist this failed-run evidence, then implement/test a second host path with explicit ambient-config isolation and a minimal authenticated inference probe before attempting another full baseline.
+Merge the Gate 1 closeout, close issue #3 as incomplete_external_environment, then start Gate 2 issue #8 on a focused contracts/reducer branch and run the full repository check.
