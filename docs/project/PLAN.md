@@ -9,7 +9,7 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 <!-- CURRENT_GATE_START -->
 ## Gate 1 — Pinned baseline and evaluation harness
 
-Status: In progress — deterministic provider-neutral foundation
+Status: Deterministic foundation ready for review; provider baseline still pending
 Issue: #3
 Upstream baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
 
