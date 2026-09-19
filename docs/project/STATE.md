@@ -9,46 +9,47 @@ Updated: 2026-09-19
 - Pinned methodology baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
 - Gates 0, 1, 2, 2b, 3a, 3b, and 3c are complete.
 - Gate 3d resumable orchestration merged as f88982a0bbb15f782fbd806c2ccbfdfdfd4fa171.
-- Delayed Codex review on merged PR #17 identified one P1 and two P2 issues; Gate 3 remains open until those findings are closed.
+- Gate 3e schema-v2 replay/incomplete-state hardening merged through PR #19.
+- Delayed review of PR #19 exposed two additional P2 compatibility defects; Gate 3f fixes them before Gate 3 closes.
+- Event-stream raw domain schema versions are now monotonic: a v2 prefix may transition to v3, but a v3→v2 downgrade fails closed.
+- Schema-v2 worker outcomes are validated against the actual v2 enum before any v3 receipt fields are synthesized.
 - Current code preserves the Cloudflare audit methodology; hosted orchestration/persistence behavior is owned separately.
-- Worker/provider output is untrusted observation; accepted owned events and reducer replay remain canonical audit truth.
+- Worker/provider output remains untrusted observation; accepted owned events and reducer replay remain canonical audit truth.
 
 ## Current gate
 
-- Gate: 3e — Delayed-review compatibility and memory hardening
+- Gate: 3f — Historical schema semantic validation
 - Active issue: #12
-- Branch: gate-3/review-hardening
-- PR: #19
-- Status: PR #19 CI green; independent trust review clean; external Codex review unavailable due account review quota
+- Branch: gate-3/schema-compatibility-hardening-2
+- PR: not opened yet
+- Status: implementation and full local evidence green; ready for focused PR
 
 ## Blockers
 
-- No code/test blocker.
-- Automated Codex review on the final PR head could not run because the account hit its code-review usage limit. An independent manual trust review of the exact final branch found no unresolved trust-critical issue; this limitation is recorded rather than hidden.
+None known for Gate 3f.
+
+The obsolete pre-v2 Gate 3c PR #16 remains open and should be closed as superseded after Gate 3 closes.
 
 ## Verified evidence
 
-Full repository check on the Gate 3e code worktree:
+Full repository check on Gate 3f:
 
+- memory invariants: PASS
 - upstream Cloudflare validators: 65/65 PASS
 - Gate 1 eval/adapter tests: 13/13 PASS
 - strict TypeScript compile: PASS
-- domain/storage/orchestrator tests: 71/71 PASS
-- npm audit: 0 vulnerabilities
+- domain/storage/orchestrator tests: 73/73 PASS
 - diff whitespace check: PASS
 
-Delayed-review fixes now prove:
+New delayed-review regressions prove:
 
-- terminal schema-v2 event stores remain readable without rewriting historical event bytes;
-- raw schema-v2 checksums are validated before in-memory upcast;
-- active schema-v2 runs with missing historical checkpoints are readable and terminalize explicit `incomplete` with zero worker calls;
-- mixed v2→v3 history remains readable after that terminalization;
-- more than 128 distinct incomplete reasons are summarized with a deterministic overflow sentinel instead of wedging the active run;
-- duplicate D-011 memory is consolidated;
-- duplicate durable Decision/Lesson IDs now fail the memory checker.
+- a checksum-valid v3→v2 schema downgrade inside one stream is rejected;
+- a schema-v2 assignment completion using the v3-only orchestrator_interrupted outcome is rejected before upcast;
+- valid v2→v3 mixed streams remain supported;
+- Gate 3e replay/checksum/overflow/restart tests remain green.
 
-Decision D-012 records the schema-upgrade compatibility rule.
+Decision D-012 now includes raw-version monotonicity and version-specific semantic validation.
 
 ## Next action
 
-Merge PR #19, close issue #12, and advance durable project memory to Gate 4: scoped/PR audit path and deterministic context compiler.
+Open/review/merge the Gate 3f PR with GitHub CI/review green, then close issue #12 and obsolete PR #16 and advance to Gate 4.
