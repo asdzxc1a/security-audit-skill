@@ -38,13 +38,14 @@ Full repository check on Gate 3f:
 - upstream Cloudflare validators: 65/65 PASS
 - Gate 1 eval/adapter tests: 13/13 PASS
 - strict TypeScript compile: PASS
-- domain/storage/orchestrator tests: 73/73 PASS
+- domain/storage/orchestrator tests: 74/74 PASS
 - diff whitespace check: PASS
 
 New delayed-review regressions prove:
 
 - a checksum-valid v3→v2 schema downgrade inside one stream is rejected;
 - a schema-v2 assignment completion using the v3-only orchestrator_interrupted outcome is rejected before upcast;
+- the schema-v2 event-type allowlist is frozen explicitly, so current-only event types are rejected before upcast;
 - valid v2→v3 mixed streams remain supported;
 - Gate 3e replay/checksum/overflow/restart tests remain green.
 
