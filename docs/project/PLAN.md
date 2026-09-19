@@ -10,57 +10,50 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 - Gate 2b — Durable accepted-event store + replay projections.
 - Gate 3a — Straight-through Recon → Hunt → candidate Validate orchestration.
 - Gate 3b — Evidence-bearing/bounded orchestration hardening.
-- Gate 3c — Bounded coverage critics, final verification, reporting, and terminalization. Merged as 016139cefd603efa48551fa051f41df028411734.
+- Gate 3c — Bounded coverage critics, final verification, reporting, and terminalization.
+- Gate 3d — Resumable orchestration checkpoints. Merged as f88982a0bbb15f782fbd806c2ccbfdfdfd4fa171.
 
 <!-- CURRENT_GATE_START -->
-## Gate 3d — Resumable orchestration checkpoints
+## Gate 3e — Delayed-review compatibility and memory hardening
 
 Status: Implementation/local evidence green; ready for review  
 Issue: #12
 
 ### Goal
 
-Make the full hosted audit lifecycle restart-safe without re-calling workers whose normalized results are already durable or inferring lost task context from mutable current state.
+Close all delayed trust/reliability findings from merged PR #17 before declaring Gate 3 complete.
 
 ### Scope
 
-- owned domain schema version 3;
-- orchestration receipt version 3;
-- bounded versioned `taskReceipt` persisted atomically with assignment creation;
-- bounded versioned `resultReceipt` persisted atomically with successful assignment completion;
-- failures/cancellations/internal interruptions must carry no result receipt;
-- durable nonterminal `incompleteReasons`;
-- reducer prevents `run_completed` when incomplete reasons exist;
-- `runToTerminal` delegates to the same phase-driven engine as `resumeToTerminal`;
-- restart behavior for planned, in-progress, succeeded, failed, and cancelled assignments;
-- completed receipts are re-validated through the task-specific parser before semantic use;
-- planned tasks execute exactly from their durable task receipt;
-- ambiguous in-progress work becomes `orchestrator_interrupted` and retries with a fresh worker;
-- persisted critic task receipts preserve `post_wave` vs `final_clean`;
-- bounded terminal incomplete summaries.
+- preserve schema-v2 event-store readability after the schema-v3 writer upgrade;
+- checksum historical events in their original schema before in-memory upcast;
+- leave historical event bytes/checksum chain unchanged during reads;
+- mark synthesized legacy checkpoint receipts explicitly non-resumable;
+- safely terminalize nonterminal schema-v2 runs with legacy assignments as incomplete without worker calls;
+- allow current-schema terminalization events to extend a legacy checksum chain;
+- summarize incomplete-reason overflow instead of rejecting reason 129+;
+- consolidate duplicate D-011 and duplicate Lesson ID;
+- make memory CI reject duplicate Decision/Lesson IDs.
 
 ### Acceptance
 
-- planned assignment resumes from original durable task receipt;
-- completed hunter receipt resolves coverage without rerunning hunter;
-- completed coverage-critic receipt applies missing/reopened work without rerunning that critic;
-- completed candidate-verifier receipt dispositions candidate without rerunning verifier;
-- completed final-verifier receipt finalizes record without rerunning verifier;
-- in-progress assignment is explicitly interrupted and fresh retry is independent;
-- interrupted critic retry preserves original round;
-- permanent worker/critic failure remains a durable incomplete reason across restart;
-- malformed/oversized task and result receipts are rejected;
-- receipt task identity must match run/source/profile and assignment ownership;
-- event-store restart/projection preserves checkpoint receipts;
-- incomplete reasons independently block `run_completed`;
-- fresh and resumed full runs share one orchestration implementation;
-- all existing upstream/eval/domain/storage/orchestrator tests remain green;
-- GitHub CI and review are green.
+- terminal schema-v2 store reads under current code without rewriting original files;
+- active schema-v2 store with an assignment reads and terminalizes incomplete without provider invocation;
+- mixed v2/v3 stream remains readable after terminalization;
+- original v2 checksum validation occurs before upcast;
+- unsupported schema versions still fail closed;
+- >128 unique incomplete reasons do not wedge the reducer and can still terminalize incomplete;
+- D-011 exists exactly once;
+- all Decision IDs and Lesson IDs are unique and checked by `check:memory`;
+- all upstream/eval/domain/storage/orchestrator tests remain green;
+- GitHub CI is green;
+- review has no unresolved trust-critical findings.
 
 ### Non-goals
 
-- No distributed multi-orchestrator locking/leader election yet.
-- No real provider SDK.
+- No general multi-version migration framework beyond v2→v3 compatibility required by existing history.
+- No distributed locking/leader election.
+- No provider SDK.
 - No context compiler.
 - No sandbox.
 - No MCP server.
@@ -68,15 +61,15 @@ Make the full hosted audit lifecycle restart-safe without re-calling workers who
 
 ### Exit
 
-Gate 3d exits when its focused PR is CI/review-green and merged. Issue #12 then closes.
+Gate 3e exits when its PR is CI/review-green and merged. Issue #12 then closes and Gate 3 is complete.
 
 Next gate: Gate 4 — scoped/PR audit path and deterministic context compiler.
 <!-- CURRENT_GATE_END -->
 
 ## Queued roadmap
 
-### Gate 4 — Scoped/PR audit path and context compiler
-Make diff/subsystem review the default cost-effective path. Build deterministic source/coverage/methodology context bundles for worker tasks without stuffing unrelated project memory/history into model context.
+### Gate 4 — Scoped/PR audit path and deterministic context compiler
+Make diff/subsystem review the default cost-effective path. Build bounded deterministic worker context from immutable source/scope, canonical audit state, and selected methodology blocks.
 
 ### Gate 5 — Sandboxed local validation and immutable evidence
 Add hostile-target execution isolation and proof provenance.
