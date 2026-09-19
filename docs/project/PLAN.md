@@ -13,7 +13,7 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 <!-- CURRENT_GATE_START -->
 ## Gate 4a — Deterministic context compiler foundation
 
-Status: Full fresh-clone evidence green; ready for review  
+Status: Reconciled with Gate 3f; full fresh-clone evidence green; PR #23 under CI/review  
 Issue: #20
 
 ### Goal
