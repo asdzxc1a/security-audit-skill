@@ -10,7 +10,7 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 <!-- CURRENT_GATE_START -->
 ## Gate 2 — Owned contracts and durable audit state
 
-Status: Queued pending Gate 1 closeout merge  
+Status: Contracts/reducer implementation green; ready for review  
 Issue: #8
 
 ### Goal
@@ -52,7 +52,9 @@ No database in this first slice. Contract semantics come before persistence.
 
 ### Exit
 
-The contracts/reducer slice exits when its tests and full repository checks are green and the next durable-persistence subtask is recorded.
+The contracts/reducer slice is ready to exit when the focused PR is CI-green and merged.
+
+Next bounded slice: Gate 2b — minimum durable event store + projections. It must replay the same accepted event stream through the reducer and prove reconstructed state is identical; it may not introduce alternate transition semantics.
 <!-- CURRENT_GATE_END -->
 
 ## Queued roadmap
