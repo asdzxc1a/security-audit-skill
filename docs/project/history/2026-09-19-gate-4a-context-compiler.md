@@ -4,9 +4,9 @@
 
 Gate 4a builds the provider-neutral context compiler foundation without changing Cloudflare audit methodology or invoking any model/provider.
 
-Base includes completed Gate 3e at `d9346e6efbf8e13ed9b2ab0afc62018a2dbe00b6`.
+Base is reconciled with completed Gate 3f at `cde946a63e89b1e6ead91c9eb52cda54542282be`.
 
-Final implementation head before memory-only evidence updates: `3577c1cd316624c28713c974f5985048efb20a18`.
+Reconciled tested head before final memory-only updates: `b9d5974ac4b7298338f2a7cfd3cd5ea7019b758e`.
 
 ## Owned inputs
 
@@ -67,8 +67,8 @@ Fresh clone of the final Gate 4a branch:
 - Gate 1 eval/adapter tests: 13/13 PASS;
 - strict TypeScript compile: PASS;
 - context/compiler tests: 16/16 PASS;
-- existing domain/storage/orchestrator tests: 71/71 PASS;
-- combined domain/context suite: 87/87 PASS;
+- existing domain/storage/orchestrator tests: 74/74 PASS;
+- combined domain/context suite: 90/90 PASS;
 - `git diff --check`: PASS.
 
 ## Deliberate non-goals
