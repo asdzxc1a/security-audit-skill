@@ -10,7 +10,7 @@ import type {
   WorkerOutcomeKind,
 } from "../domain/contracts";
 
-export const ORCHESTRATION_SCHEMA_VERSION = 2 as const;
+export const ORCHESTRATION_SCHEMA_VERSION = 3 as const;
 export type OrchestrationSchemaVersion = typeof ORCHESTRATION_SCHEMA_VERSION;
 
 export interface AuditRunRequest {
@@ -148,6 +148,16 @@ export type WorkerResult =
   | CandidateValidationResult
   | CoverageCriticResult
   | RecordVerificationResult;
+
+export interface WorkerTaskReceipt {
+  readonly schemaVersion: OrchestrationSchemaVersion;
+  readonly task: WorkerTask;
+}
+
+export interface WorkerResultReceipt {
+  readonly schemaVersion: OrchestrationSchemaVersion;
+  readonly result: WorkerResult;
+}
 
 export type FailureWorkerOutcomeKind = Exclude<WorkerOutcomeKind, "valid_result">;
 

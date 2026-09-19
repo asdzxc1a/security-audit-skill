@@ -195,6 +195,7 @@ function validateWorkerOutcome(outcome: WorkerAssignment["outcome"]): void {
     "timeout",
     "permission_denied",
     "sandbox_failure",
+    "orchestrator_interrupted",
     "cancelled",
   ]);
   if (typeof outcome.kind !== "string" || !kinds.has(outcome.kind)) {
@@ -216,6 +217,42 @@ function validateWorkerOutcome(outcome: WorkerAssignment["outcome"]): void {
     if (serialized === undefined || Buffer.byteLength(serialized, "utf8") > 32 * 1024) {
       fail("invalid_assignment", "outcome adapter metadata exceeds byte limit");
     }
+  }
+}
+
+function validateBoundedJsonReceipt(value: unknown, label: string): void {
+  if (!isObject(value)) {
+    fail("invalid_assignment", label + " must be an object");
+  }
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    fail("invalid_assignment", label + " must be JSON-serializable");
+  }
+  if (
+    serialized === undefined ||
+    Buffer.byteLength(serialized, "utf8") > 256 * 1024
+  ) {
+    fail("invalid_assignment", label + " exceeds byte limit");
+  }
+}
+
+function validateReceiptEnvelope(
+  value: unknown,
+  payloadKey: "task" | "result",
+  label: string,
+): void {
+  validateBoundedJsonReceipt(value, label);
+  if (
+    !isObject(value) ||
+    typeof value.schemaVersion !== "number" ||
+    !Number.isSafeInteger(value.schemaVersion) ||
+    value.schemaVersion < 1 ||
+    !Object.prototype.hasOwnProperty.call(value, payloadKey) ||
+    !isObject(value[payloadKey])
+  ) {
+    fail("invalid_assignment", label + " has invalid envelope shape");
   }
 }
 
@@ -342,6 +379,9 @@ function verifyCompletion(state: AuditRunState): void {
   if (hasOpenAssignments(state)) {
     fail("unresolved_work", "run cannot complete with open assignments");
   }
+  if (state.incompleteReasons.length > 0) {
+    fail("unresolved_work", "run cannot complete with persisted incomplete reasons");
+  }
   for (const coverage of Object.values(state.coverageUnits)) {
     if (
       coverage.status === "planned" ||
@@ -416,6 +456,7 @@ function createRun(event: Extract<AuditEvent, { type: "run_created" }>): AuditRu
     coverageUnits: {},
     candidates: {},
     evidenceRequirements: {},
+    incompleteReasons: [],
     terminalReason: null,
   };
 }
@@ -473,6 +514,11 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       requireId(event.assignmentId, "assignmentId");
       requireId(event.workerId, "workerId");
       if (state.assignments[event.assignmentId]) fail("invalid_assignment", "duplicate assignment");
+      validateReceiptEnvelope(
+        event.taskReceipt,
+        "task",
+        "normalized worker task receipt",
+      );
       if (new Set(event.coverageIds).size !== event.coverageIds.length) {
         fail("invalid_assignment", "assignment coverageIds must be unique");
       }
@@ -557,7 +603,9 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
         coverageIds: [...event.coverageIds],
         candidateId: event.candidateId,
         status: "planned",
+        taskReceipt: structuredClone(event.taskReceipt),
         outcome: null,
+        resultReceipt: null,
         createdSequence: event.sequence,
         completedSequence: null,
       };
@@ -586,6 +634,18 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       const assignment = assignmentOrFail(state, event.assignmentId);
       if (assignment.status !== "in_progress") fail("invalid_assignment", "assignment is not in progress");
       validateWorkerOutcome(event.outcome);
+      if (event.outcome.kind === "valid_result") {
+        if (event.resultReceipt === null) {
+          fail("invalid_assignment", "valid_result assignment requires normalized result receipt");
+        }
+        validateReceiptEnvelope(
+          event.resultReceipt,
+          "result",
+          "normalized worker result receipt",
+        );
+      } else if (event.resultReceipt !== null) {
+        fail("invalid_assignment", "failed/cancelled assignment must not carry result receipt");
+      }
       const status =
         event.outcome.kind === "valid_result"
           ? "succeeded"
@@ -596,6 +656,8 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
         ...assignment,
         status,
         outcome: event.outcome,
+        resultReceipt:
+          event.resultReceipt === null ? null : structuredClone(event.resultReceipt),
         completedSequence: event.sequence,
       };
       return next;
@@ -900,6 +962,17 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
         ...candidate,
         finalVerifierAssignmentId: verifier.assignmentId,
       };
+      return next;
+    }
+
+    case "run_incomplete_reason_recorded": {
+      requireText(event.reason, "reason");
+      if (!state.incompleteReasons.includes(event.reason)) {
+        if (state.incompleteReasons.length >= 128) {
+          fail("invalid_event", "too many incomplete reasons");
+        }
+        next.incompleteReasons = [...state.incompleteReasons, event.reason];
+      }
       return next;
     }
 

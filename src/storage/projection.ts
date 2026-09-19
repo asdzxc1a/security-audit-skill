@@ -11,6 +11,9 @@ function cloneAssignment(value: WorkerAssignment): WorkerAssignment {
   return {
     ...value,
     coverageIds: [...value.coverageIds],
+    taskReceipt: structuredClone(value.taskReceipt),
+    resultReceipt:
+      value.resultReceipt === null ? null : structuredClone(value.resultReceipt),
     outcome:
       value.outcome === null
         ? null
@@ -65,6 +68,7 @@ export function projectAuditState(state: AuditRunState): AuditProjection {
     sequence: state.sequence,
     budget: { ...state.budget },
     terminalReason: state.terminalReason,
+    incompleteReasons: [...state.incompleteReasons],
     assignments: Object.values(state.assignments)
       .map(cloneAssignment)
       .sort((left, right) => left.assignmentId.localeCompare(right.assignmentId)),

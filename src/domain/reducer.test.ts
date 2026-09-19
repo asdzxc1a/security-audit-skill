@@ -12,6 +12,7 @@ import {
 import { DomainTransitionError, reduceAuditState, type TransitionErrorCode } from "./reducer";
 
 const VALID: WorkerOutcome = { kind: "valid_result", detail: null, adapter: null };
+const TASK_RECEIPT = { schemaVersion: 1, task: { kind: "test_task" } } as const;
 
 const CLAIM: CandidateClaim = {
   title: "Cross-boundary document read",
@@ -108,9 +109,10 @@ function createCandidate(scenario: Scenario): void {
     workerId: "hunter-a",
     coverageIds: ["coverage-1"],
     candidateId: null,
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "hunt-1" });
-  scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID });
+  scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID, resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } } });
   scenario.apply({
     type: "candidate_registered",
     candidateId: "candidate-1",
@@ -144,12 +146,14 @@ function verifyCandidate(
     workerId,
     coverageIds: [],
     candidateId: "candidate-1",
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "candidate-verify-1" });
   scenario.apply({
     type: "assignment_completed",
     assignmentId: "candidate-verify-1",
     outcome: VALID,
+    resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } },
   });
   scenario.apply({
     type: "candidate_disposition_recorded",
@@ -172,12 +176,14 @@ test("valid confirmed-finding lifecycle reaches complete", () => {
     workerId: "verifier-b",
     coverageIds: [],
     candidateId: "candidate-1",
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "record-verify-1" });
   scenario.apply({
     type: "assignment_completed",
     assignmentId: "record-verify-1",
     outcome: VALID,
+    resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } },
   });
   scenario.apply({
     type: "candidate_final_verified",
@@ -204,9 +210,10 @@ test("evidence-free covered resolution is rejected by the reducer itself", () =>
     workerId: "hunter-a",
     coverageIds: ["coverage-1"],
     candidateId: null,
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "hunt-1" });
-  scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID });
+  scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID, resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } } });
 
   expectCode(
     () =>
@@ -224,6 +231,118 @@ test("evidence-free covered resolution is rejected by the reducer itself", () =>
   );
 });
 
+
+
+
+test("assignment creation requires a bounded versioned task receipt envelope", () => {
+  const scenario = new Scenario();
+  advanceToHunting(scenario);
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "assignment_created",
+        assignmentId: "hunt-missing-task",
+        kind: "hunter",
+        workerId: "hunter-a",
+        coverageIds: ["coverage-1"],
+        candidateId: null,
+        taskReceipt: null,
+      }),
+    "invalid_assignment",
+  );
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "assignment_created",
+        assignmentId: "hunt-bad-envelope",
+        kind: "hunter",
+        workerId: "hunter-a",
+        coverageIds: ["coverage-1"],
+        candidateId: null,
+        taskReceipt: { schemaVersion: 1, wrong: {} },
+      }),
+    "invalid_assignment",
+  );
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "assignment_created",
+        assignmentId: "hunt-oversized-task",
+        kind: "hunter",
+        workerId: "hunter-a",
+        coverageIds: ["coverage-1"],
+        candidateId: null,
+        taskReceipt: {
+          schemaVersion: 1,
+          task: { payload: "x".repeat(300 * 1024) },
+        },
+      }),
+    "invalid_assignment",
+  );
+});
+
+test("assignment completion enforces bounded normalized result receipts", () => {
+  const scenario = new Scenario();
+  advanceToHunting(scenario);
+  scenario.apply({
+    type: "assignment_created",
+    assignmentId: "hunt-1",
+    kind: "hunter",
+    workerId: "hunter-a",
+    coverageIds: ["coverage-1"],
+    candidateId: null,
+    taskReceipt: TASK_RECEIPT,
+  });
+  scenario.apply({ type: "assignment_started", assignmentId: "hunt-1" });
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "assignment_completed",
+        assignmentId: "hunt-1",
+        outcome: VALID,
+        resultReceipt: null,
+      }),
+    "invalid_assignment",
+  );
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "assignment_completed",
+        assignmentId: "hunt-1",
+        outcome: { kind: "provider_error", detail: "failed", adapter: null },
+        resultReceipt: { schemaVersion: 1, result: { kind: "should-not-exist" } },
+      }),
+    "invalid_assignment",
+  );
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "assignment_completed",
+        assignmentId: "hunt-1",
+        outcome: VALID,
+        resultReceipt: { payload: "x".repeat(300 * 1024) },
+      }),
+    "invalid_assignment",
+  );
+
+  const completed = scenario.apply({
+    type: "assignment_completed",
+    assignmentId: "hunt-1",
+    outcome: VALID,
+    resultReceipt: { schemaVersion: 2, result: { kind: "hunter_result" } },
+  });
+  assert.deepEqual(completed.assignments["hunt-1"].resultReceipt, {
+    schemaVersion: 2,
+    result: { kind: "hunter_result" },
+  });
+});
+
 test("provider error cannot resolve coverage as clean", () => {
   const scenario = new Scenario();
   advanceToHunting(scenario);
@@ -234,12 +353,14 @@ test("provider error cannot resolve coverage as clean", () => {
     workerId: "hunter-a",
     coverageIds: ["coverage-1"],
     candidateId: null,
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "hunt-1" });
   scenario.apply({
     type: "assignment_completed",
     assignmentId: "hunt-1",
     outcome: { kind: "provider_error", detail: "401", adapter: null },
+    resultReceipt: null,
   });
 
   expectCode(
@@ -278,6 +399,7 @@ test("hunter cannot be assigned to validate its own candidate", () => {
         workerId: "hunter-a",
         coverageIds: [],
         candidateId: "candidate-1",
+        taskReceipt: TASK_RECEIPT,
       }),
     "independence_violation",
   );
@@ -294,12 +416,14 @@ test("needs_validation requires a durable open handoff requirement", () => {
     workerId: "verifier-a",
     coverageIds: [],
     candidateId: "candidate-1",
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "candidate-verify-1" });
   scenario.apply({
     type: "assignment_completed",
     assignmentId: "candidate-verify-1",
     outcome: VALID,
+    resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } },
   });
 
   expectCode(
@@ -372,6 +496,7 @@ test("strict budget is enforced before assignment creation", () => {
         workerId: "worker-a",
         coverageIds: [],
         candidateId: null,
+        taskReceipt: TASK_RECEIPT,
       }),
     "budget_exhausted",
   );
@@ -401,6 +526,7 @@ test("final verifier assignment must use a fresh worker", () => {
         workerId: "verifier-a",
         coverageIds: [],
         candidateId: "candidate-1",
+        taskReceipt: TASK_RECEIPT,
       }),
     "independence_violation",
   );
@@ -421,6 +547,7 @@ test("only hunters may own coverage units", () => {
         workerId: "critic-a",
         coverageIds: ["coverage-1"],
         candidateId: null,
+        taskReceipt: TASK_RECEIPT,
       }),
     "invalid_assignment",
   );
@@ -439,6 +566,7 @@ test("assignment coverage ids must be unique", () => {
         workerId: "hunter-a",
         coverageIds: ["coverage-1", "coverage-1"],
         candidateId: null,
+        taskReceipt: TASK_RECEIPT,
       }),
     "invalid_assignment",
   );
@@ -454,12 +582,14 @@ test("requeued coverage requires a fresh hunter worker", () => {
     workerId: "hunter-a",
     coverageIds: ["coverage-1"],
     candidateId: null,
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "hunt-1" });
   scenario.apply({
     type: "assignment_completed",
     assignmentId: "hunt-1",
     outcome: { kind: "provider_error", detail: "provider unavailable", adapter: null },
+    resultReceipt: null,
   });
   scenario.apply({
     type: "coverage_requeued",
@@ -477,6 +607,7 @@ test("requeued coverage requires a fresh hunter worker", () => {
         workerId: "hunter-a",
         coverageIds: ["coverage-1"],
         candidateId: null,
+        taskReceipt: TASK_RECEIPT,
       }),
     "independence_violation",
   );
@@ -488,6 +619,7 @@ test("requeued coverage requires a fresh hunter worker", () => {
     workerId: "hunter-b",
     coverageIds: ["coverage-1"],
     candidateId: null,
+    taskReceipt: TASK_RECEIPT,
   });
   assert.equal(state.assignments["hunt-3"].workerId, "hunter-b");
 });
@@ -502,9 +634,10 @@ test("coverage candidate ids must be unique", () => {
     workerId: "hunter-a",
     coverageIds: ["coverage-1"],
     candidateId: null,
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "hunt-1" });
-  scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID });
+  scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID, resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } } });
   scenario.apply({
     type: "candidate_registered",
     candidateId: "candidate-1",
@@ -540,12 +673,14 @@ test("needs_validation handoff remains open until an explicit revalidation trans
     workerId: "verifier-a",
     coverageIds: [],
     candidateId: "candidate-1",
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "candidate-verify-1" });
   scenario.apply({
     type: "assignment_completed",
     assignmentId: "candidate-verify-1",
     outcome: VALID,
+    resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } },
   });
   scenario.apply({
     type: "evidence_requirement_opened",
@@ -588,9 +723,10 @@ test("blocked and deferred coverage prevent final completion", () => {
         workerId: "hunter-a",
         coverageIds: ["coverage-1"],
         candidateId: null,
+        taskReceipt: TASK_RECEIPT,
       });
       scenario.apply({ type: "assignment_started", assignmentId: "hunt-1" });
-      scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID });
+      scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID, resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } } });
       scenario.apply({
         type: "coverage_resolved",
         coverageId: "coverage-1",
@@ -629,9 +765,10 @@ test("coverage critic can reopen covered work only with an independent successfu
     workerId: "hunter-a",
     coverageIds: ["coverage-1"],
     candidateId: null,
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "hunt-1" });
-  scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID });
+  scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID, resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } } });
   scenario.apply({
     type: "coverage_resolved",
     coverageId: "coverage-1",
@@ -649,9 +786,10 @@ test("coverage critic can reopen covered work only with an independent successfu
     workerId: "critic-a",
     coverageIds: [],
     candidateId: null,
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "critic-1" });
-  scenario.apply({ type: "assignment_completed", assignmentId: "critic-1", outcome: VALID });
+  scenario.apply({ type: "assignment_completed", assignmentId: "critic-1", outcome: VALID, resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } } });
 
   const reopened = scenario.apply({
     type: "coverage_reopened",
@@ -677,9 +815,10 @@ test("successful coverage critic can add a new planned coverage unit", () => {
     workerId: "critic-a",
     coverageIds: [],
     candidateId: null,
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "critic-1" });
-  scenario.apply({ type: "assignment_completed", assignmentId: "critic-1", outcome: VALID });
+  scenario.apply({ type: "assignment_completed", assignmentId: "critic-1", outcome: VALID, resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } } });
 
   const state = scenario.apply({
     type: "coverage_unit_added_by_critic",
@@ -713,9 +852,10 @@ test("coverage critic assignments require fresh workers", () => {
     workerId: "critic-a",
     coverageIds: [],
     candidateId: null,
+    taskReceipt: TASK_RECEIPT,
   });
   scenario.apply({ type: "assignment_started", assignmentId: "critic-1" });
-  scenario.apply({ type: "assignment_completed", assignmentId: "critic-1", outcome: VALID });
+  scenario.apply({ type: "assignment_completed", assignmentId: "critic-1", outcome: VALID, resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } } });
 
   expectCode(
     () =>
@@ -726,9 +866,28 @@ test("coverage critic assignments require fresh workers", () => {
         workerId: "critic-a",
         coverageIds: [],
         candidateId: null,
+        taskReceipt: TASK_RECEIPT,
       }),
     "independence_violation",
   );
+});
+
+
+test("persisted incomplete reason prevents run_completed at the reducer boundary", () => {
+  const scenario = new Scenario();
+  createRun(scenario);
+  scenario.apply({ type: "phase_advanced", to: "reconnaissance" });
+  scenario.apply({ type: "phase_advanced", to: "coverage_planning" });
+  scenario.apply({ type: "phase_advanced", to: "hunting" });
+  scenario.apply({ type: "phase_advanced", to: "candidate_validation" });
+  scenario.apply({ type: "phase_advanced", to: "record_verification" });
+  scenario.apply({ type: "phase_advanced", to: "reporting" });
+  scenario.apply({
+    type: "run_incomplete_reason_recorded",
+    reason: "coverage critic unavailable",
+  });
+
+  expectCode(() => scenario.attempt({ type: "run_completed" }), "unresolved_work");
 });
 
 test("incomplete run can terminate with unresolved work, then rejects later events", () => {

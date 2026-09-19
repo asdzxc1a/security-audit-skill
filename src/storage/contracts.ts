@@ -23,6 +23,7 @@ export interface AuditProjection {
   readonly sequence: number;
   readonly budget: AuditBudget;
   readonly terminalReason: string | null;
+  readonly incompleteReasons: readonly string[];
   readonly assignments: readonly WorkerAssignment[];
   readonly coverageUnits: readonly CoverageUnit[];
   readonly candidates: readonly Candidate[];

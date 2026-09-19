@@ -103,6 +103,48 @@ Tests must prove:
 - partial coverage can preserve final-verified findings but cannot become complete;
 - blocked/deferred coverage cannot produce `run_completed`.
 
+### Gate 3d restart/resume orchestration
+
+Covered by `npm run check:domain`.
+
+Tests must prove:
+
+- assignment creation rejects malformed/oversized task receipts;
+- assignment completion rejects missing/oversized result receipts and result receipts on failed outcomes;
+- task and result receipts survive event-store restart/projection;
+- a completed hunter receipt resumes without a second hunter invocation;
+- a planned assignment executes its original durable task receipt;
+- an in-progress assignment becomes `orchestrator_interrupted` and retries with a fresh worker;
+- a completed critic receipt resumes without rerunning that critic;
+- interrupted critic retry preserves its original `post_wave`/ `final_clean` round;
+- completed candidate-verifier and final-verifier receipts resume without duplicate verification;
+- a durable critic failure reconstructs/preserves an incomplete reason after restart;
+- persisted incomplete reasons prevent `run_completed` at the reducer boundary;
+- full fresh and resumed runs use the same phase-driven engine.
+
+### Gate 3d resumable orchestration checkpoints
+
+Covered by `npm run check:domain`.
+
+Tests must prove:
+
+- assignment creation requires a bounded durable task receipt;
+- successful assignment completion requires a bounded normalized result receipt;
+- failed/cancelled/interrupted assignments cannot carry result receipts;
+- task/result receipts survive event-store restart and projection;
+- planned assignment resumes from its original task receipt;
+- completed hunter result resumes without a second hunter call;
+- completed critic result resumes without a second call to that critic;
+- completed candidate-verifier result resumes without a second candidate-verifier call;
+- completed final-verifier result resumes without a second final-verifier call;
+- ambiguous in-progress work becomes `orchestrator_interrupted` and retries through a fresh assignment;
+- interrupted coverage-critic retries preserve the original `post_wave` / `final_clean` round from the durable task receipt;
+- durable result receipts are revalidated through the task-specific parser before semantic use;
+- task receipts must match run/source/profile and assignment ownership;
+- persisted incomplete reasons survive restart and independently block `run_completed`;
+- a crash after worker failure completion but before reason recording reconstructs the reason on resume;
+- fresh and resumed terminal runs share the same phase-driven implementation.
+
 ### Full repository
 `npm run check`
 

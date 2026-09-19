@@ -8,74 +8,69 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 - Gate 1 — Pinned eval harness + host-readiness measurement. Closed `incomplete_external_environment`; no model-quality precision/recall claim is made.
 - Gate 2 — Provider-neutral contracts + deterministic fail-closed reducer.
 - Gate 2b — Durable accepted-event store + replay projections.
-- Gate 3a — Straight-through Recon → Hunt → candidate Validate orchestration. Merged as 5765eedfecffcce84b77794876186bc097106e15.
-- Gate 3b — Evidence-bearing/bounded orchestration hardening. Merged as 8f3dee2cd3a71fe7db52081a3194a5c3885f2d63.
+- Gate 3a — Straight-through Recon → Hunt → candidate Validate orchestration.
+- Gate 3b — Evidence-bearing/bounded orchestration hardening.
+- Gate 3c — Bounded coverage critics, final verification, reporting, and terminalization. Merged as 016139cefd603efa48551fa051f41df028411734.
 
 <!-- CURRENT_GATE_START -->
-## Gate 3c — Coverage critics, final verification, reporting, and terminalization
+## Gate 3d — Resumable orchestration checkpoints
 
 Status: Implementation/local evidence green; ready for review  
 Issue: #12
 
 ### Goal
 
-Complete the bounded audit lifecycle while preserving the observation → owned event → reducer/event-store authority chain.
+Make the full hosted audit lifecycle restart-safe without re-calling workers whose normalized results are already durable or inferring lost task context from mutable current state.
 
 ### Scope
 
-- successful independent coverage critics;
-- explicit critic `stop` decision;
-- critic task snapshots include canonical reviewed paths/checks/candidate IDs/unresolved state;
-- critic may add bounded missing coverage IDs or request reassignment of covered units;
-- owned `coverage_unit_added_by_critic` and `coverage_reopened` transitions;
-- fresh critic workers and fresh reassigned hunters;
-- profile-aware behavior:
-  - `quick`: one critic; requested work becomes deferred/incomplete;
-  - `standard/deep`: one post-wave critic, one bounded additional hunter wave, then a fresh final-clean critic;
-  - remaining final-clean work becomes deferred/incomplete;
-- fingerprint consolidation only when substantive claims match;
-- retained confirmed/needs-validation records receive fresh record verification;
-- record verifier receives canonical claim, linked coverage IDs, and open handoff requirements;
-- final verifier returns only `verified` or `needs_revision`;
-- reporting phase + deterministic complete/incomplete terminalization;
-- partial coverage may preserve fully verified findings but cannot become complete.
+- owned domain schema version 3;
+- orchestration receipt version 3;
+- bounded versioned `taskReceipt` persisted atomically with assignment creation;
+- bounded versioned `resultReceipt` persisted atomically with successful assignment completion;
+- failures/cancellations/internal interruptions must carry no result receipt;
+- durable nonterminal `incompleteReasons`;
+- reducer prevents `run_completed` when incomplete reasons exist;
+- `runToTerminal` delegates to the same phase-driven engine as `resumeToTerminal`;
+- restart behavior for planned, in-progress, succeeded, failed, and cancelled assignments;
+- completed receipts are re-validated through the task-specific parser before semantic use;
+- planned tasks execute exactly from their durable task receipt;
+- ambiguous in-progress work becomes `orchestrator_interrupted` and retries with a fresh worker;
+- persisted critic task receipts preserve `post_wave` vs `final_clean`;
+- bounded terminal incomplete summaries.
 
 ### Acceptance
 
-- critic-added missing coverage requires successful critic provenance;
-- critic-reopened coverage requires successful independent critic provenance and clears current-attempt evidence before fresh hunting;
-- reassigned hunters are fresh;
-- critic clean-stop is explicit and contradictory stop/work output is malformed;
-- quick profile does not launch extra hunter work;
-- standard/deep can hunt both new and reopened critic work once;
-- final-clean critic is fresh and any remaining work becomes deferred/incomplete;
-- critic tasks contain canonical coverage evidence;
-- same fingerprint/different claim cannot silently merge;
-- retained records require fresh record verification;
-- needs-validation final verifier sees open handoff requirements;
-- `needs_revision` leaves canonical record unchanged and run incomplete;
-- rejected candidates skip final verification;
-- partial audits preserve useful final-verified records but end incomplete;
-- blocked/deferred coverage cannot produce `run_completed`;
+- planned assignment resumes from original durable task receipt;
+- completed hunter receipt resolves coverage without rerunning hunter;
+- completed coverage-critic receipt applies missing/reopened work without rerunning that critic;
+- completed candidate-verifier receipt dispositions candidate without rerunning verifier;
+- completed final-verifier receipt finalizes record without rerunning verifier;
+- in-progress assignment is explicitly interrupted and fresh retry is independent;
+- interrupted critic retry preserves original round;
+- permanent worker/critic failure remains a durable incomplete reason across restart;
+- malformed/oversized task and result receipts are rejected;
+- receipt task identity must match run/source/profile and assignment ownership;
+- event-store restart/projection preserves checkpoint receipts;
+- incomplete reasons independently block `run_completed`;
+- fresh and resumed full runs share one orchestration implementation;
 - all existing upstream/eval/domain/storage/orchestrator tests remain green;
 - GitHub CI and review are green.
 
 ### Non-goals
 
+- No distributed multi-orchestrator locking/leader election yet.
 - No real provider SDK.
 - No context compiler.
-- No unbounded critic loop.
-- No material final-record replacement/revalidation flow.
-- No crash/restart resume engine in this slice.
-- No MCP server.
 - No sandbox.
-- No prompt/attack-class changes.
+- No MCP server.
+- No Cloudflare prompt/attack-class changes.
 
 ### Exit
 
-Gate 3c exits when its focused PR is CI/review-green and merged.
+Gate 3d exits when its focused PR is CI/review-green and merged. Issue #12 then closes.
 
-Next bounded slice: Gate 3d — durable normalized worker-result receipts/checkpoints and resumable orchestration after process restart. Gate 3 remains open until that slice is accepted.
+Next gate: Gate 4 — scoped/PR audit path and deterministic context compiler.
 <!-- CURRENT_GATE_END -->
 
 ## Queued roadmap

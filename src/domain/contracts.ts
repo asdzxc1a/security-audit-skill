@@ -1,4 +1,4 @@
-export const DOMAIN_SCHEMA_VERSION = 2 as const;
+export const DOMAIN_SCHEMA_VERSION = 3 as const;
 
 export type DomainSchemaVersion = typeof DOMAIN_SCHEMA_VERSION;
 
@@ -27,6 +27,7 @@ export type WorkerOutcomeKind =
   | "timeout"
   | "permission_denied"
   | "sandbox_failure"
+  | "orchestrator_interrupted"
   | "cancelled";
 
 export interface AdapterRef {
@@ -57,7 +58,9 @@ export interface WorkerAssignment {
   readonly coverageIds: readonly string[];
   readonly candidateId: string | null;
   readonly status: AssignmentStatus;
+  readonly taskReceipt: JsonValue;
   readonly outcome: WorkerOutcome | null;
+  readonly resultReceipt: JsonValue | null;
   readonly createdSequence: number;
   readonly completedSequence: number | null;
 }
@@ -163,6 +166,7 @@ export interface AuditRunState {
   coverageUnits: Record<string, CoverageUnit>;
   candidates: Record<string, Candidate>;
   evidenceRequirements: Record<string, EvidenceRequirement>;
+  incompleteReasons: readonly string[];
   terminalReason: string | null;
 }
 
@@ -195,6 +199,7 @@ export interface AssignmentCreatedEvent extends EventBase<"assignment_created"> 
   readonly workerId: string;
   readonly coverageIds: readonly string[];
   readonly candidateId: string | null;
+  readonly taskReceipt: JsonValue;
 }
 
 export interface AssignmentStartedEvent extends EventBase<"assignment_started"> {
@@ -204,6 +209,7 @@ export interface AssignmentStartedEvent extends EventBase<"assignment_started"> 
 export interface AssignmentCompletedEvent extends EventBase<"assignment_completed"> {
   readonly assignmentId: string;
   readonly outcome: WorkerOutcome;
+  readonly resultReceipt: JsonValue | null;
 }
 
 export interface CoverageResolvedEvent extends EventBase<"coverage_resolved"> {
@@ -279,6 +285,11 @@ export interface EvidenceRequirementResolvedEvent extends EventBase<"evidence_re
   readonly resolution: string;
 }
 
+export interface RunIncompleteReasonRecordedEvent
+  extends EventBase<"run_incomplete_reason_recorded"> {
+  readonly reason: string;
+}
+
 export interface RunCompletedEvent extends EventBase<"run_completed"> {}
 
 export interface RunMarkedIncompleteEvent extends EventBase<"run_marked_incomplete"> {
@@ -311,6 +322,7 @@ export type AuditEvent =
   | CandidateFinalVerifiedEvent
   | EvidenceRequirementOpenedEvent
   | EvidenceRequirementResolvedEvent
+  | RunIncompleteReasonRecordedEvent
   | RunCompletedEvent
   | RunMarkedIncompleteEvent
   | RunFailedEvent
