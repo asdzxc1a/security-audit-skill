@@ -230,3 +230,49 @@ Observation parsing bounds total serialized bytes, field sizes, array cardinalit
 - read projections deep-copy evidence-bearing records;
 - future critic/final-verification/reporting orchestration must use these v2 contracts;
 - there is no supported production v1 event history to migrate; v2 is the current pre-production owned contract.
+
+
+## D-010 — Orchestrator owns audit identity and independent closure
+
+Status: Accepted  
+Date: 2026-09-19
+
+### Context
+
+Schema v2 made coverage and candidates evidence-bearing, but the next full-lifecycle slice exposed three remaining authority questions:
+
+1. recon workers still selected canonical coverage IDs even though identity should be deterministic application state;
+2. coverage needed an owned semantic definition so hunters and critics can reason about actual surfaces/boundaries rather than opaque IDs;
+3. final audit closure needed explicit independent critic convergence and a canonical post-validation candidate record before final record verification.
+
+### Decision
+
+Owned domain/orchestration schema version 3 applies these rules.
+
+Recon workers propose bounded semantic coverage definitions containing surface, trust boundary, subsystem, attack class, lifecycle, starting paths, and methodology references. The orchestrator assigns canonical coverage IDs. The reducer rejects duplicate semantic coverage identities.
+
+For coverage closure:
+
+- quick profile requires one clean coverage-critic pass;
+- standard/deep require two consecutive clean passes;
+- every critic assignment uses a fresh worker identity;
+- any reassignment resets the clean count;
+- critic-directed reopening is an explicit owned event;
+- re-hunting reopened work uses a fresh hunter.
+
+For candidate closure:
+
+- candidate validation records a bounded verifier-authored rationale;
+- retained confirmed/needs_validation records replace the hunter draft with the verifier-authored validated claim;
+- final record verification receives that canonical claim, rationale, linked coverage, verdict, and open handoff evidence;
+- a fresh final verifier explicitly accepts or rejects the record with a durable reason;
+- reporting can complete only after reducer completion invariants pass.
+
+### Consequences
+
+- model workers propose meaning, not canonical IDs or state transitions;
+- Gate 4 context compilation has owned semantic coverage to compile from;
+- final reports can be derived from a candidate record that has already passed independent candidate validation and final record verification;
+- critic convergence is evidence in event history rather than a prompt-side counter only;
+- schema v3 supersedes pre-production schema v2; no production migration is required;
+- the next Gate 3 slice must make this lifecycle resumable from event history without weakening these closure rules.
