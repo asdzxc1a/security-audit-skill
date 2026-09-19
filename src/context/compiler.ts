@@ -11,6 +11,7 @@ import {
 } from "./contracts";
 import { selectMethodologyBlocks } from "./methodology";
 import { resolveAuditScope } from "./scope";
+import { validateSourceSnapshot } from "./source-snapshot";
 
 export type ContextCompileErrorCode =
   | "invalid_task"
@@ -77,6 +78,7 @@ export function serializeContextBundle(bundle: WorkerContextBundle): string {
 }
 
 export function compileWorkerContext(request: ContextCompileRequest): WorkerContextBundle {
+  validateSourceSnapshot(request.snapshot);
   const limits = resolveLimits(request.limits);
   const scope = resolveAuditScope(request.snapshot, request.scope);
   const selectedPathSet = new Set(scope.selectedPaths);
@@ -159,8 +161,12 @@ export function compileWorkerContext(request: ContextCompileRequest): WorkerCont
     throw new ContextCompileError("bundle_too_large", "compiled context bundle exceeds byte limit");
   }
 
-  return Object.freeze({
+  const bundle = Object.freeze({
     ...withoutId,
     bundleId: "ctx1_" + sha256Hex(payloadJson),
   });
+  if (Buffer.byteLength(serializeContextBundle(bundle), "utf8") > limits.maxBundleBytes) {
+    throw new ContextCompileError("bundle_too_large", "compiled context bundle exceeds byte limit");
+  }
+  return bundle;
 }
