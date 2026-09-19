@@ -5,65 +5,65 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 ## Completed gates
 
 - Gate 0 — Durable GitHub memory and upstream baseline.
-- Gate 1 — Pinned eval harness + host-readiness measurement. Closed `incomplete_external_environment`: deterministic infrastructure is green; Claude was blocked by invalid OAuth, and Codex clean-host isolation requires credential-level action. No model-quality precision/recall claim is made.
+- Gate 1 — Pinned eval harness + host-readiness measurement. Closed `incomplete_external_environment`; no model-quality precision/recall claim is made.
+- Gate 2 — Provider-neutral contracts + deterministic fail-closed reducer. Merged as 6d1c154c2c4253970dd9a2e7813e428f0950f695.
 
 <!-- CURRENT_GATE_START -->
-## Gate 2 — Owned contracts and durable audit state
+## Gate 2b — Minimum durable event store and projections
 
-Status: Contracts/reducer implementation green; ready for review  
+Status: Implementation/local evidence green; ready for review  
 Issue: #8
 
 ### Goal
 
-Move trust-critical audit state, authority, and transition rules out of model prompts into versioned provider-neutral application contracts.
+Persist accepted audit history durably and reconstruct current run/coverage/candidate state without changing reducer semantics.
 
 ### Scope
 
 Current bounded subtask:
 
-- TypeScript-first hosted-domain package;
-- owned versioned contracts for audit runs, worker assignments/outcomes, audit events, coverage units, candidates/findings, and evidence requirements;
-- provider/host details represented only as adapter metadata;
-- deterministic event reducer;
-- explicit complete/incomplete terminal semantics;
-- invalid transitions fail closed;
-- tests for worker failures, unresolved candidates, and evidence blockers.
-
-No database in this first slice. Contract semantics come before persistence.
+- replaceable `AuditEventStore` interface;
+- file-backed durable reference adapter;
+- only reducer-accepted events may publish;
+- immutable one-event-per-sequence history;
+- checksum chain and durable tail witness;
+- exact append retry idempotency;
+- restart replay through the existing reducer;
+- deterministic rebuildable projections;
+- tests for rejection, corruption, truncation, recovery, and replay equivalence.
 
 ### Acceptance
 
-- TypeScript compiles in CI;
-- contracts are versioned and provider-neutral;
-- reducer tests cover the valid lifecycle and reject invalid transitions;
-- refusal/provider-error/malformed outcomes cannot become clean coverage;
-- a run cannot become complete while unresolved candidate/evidence blockers remain;
-- all existing Cloudflare validators and Gate 1 eval tests remain green;
-- durable memory names the next persistence slice.
+- reducer-rejected events never persist;
+- restart/replay reconstructs state identical to direct reduction;
+- exact event retries do not duplicate history;
+- event corruption and sequence gaps/tail loss fail closed;
+- crash before `HEAD` publication is recoverable from valid events;
+- projections are derived only from replayed canonical state;
+- all existing upstream, eval, reducer, and memory tests remain green;
+- GitHub CI is green.
 
 ### Non-goals
 
-- No prompt/attack-class refactor.
-- No model/provider SDK.
-- No production database in this first slice.
-- No sandbox.
+- No production database technology commitment.
+- No worker/provider SDK.
+- No orchestration loop yet.
 - No MCP server.
+- No sandbox.
+- No prompt/attack-class changes.
 - No automated fixes.
 
 ### Exit
 
-The contracts/reducer slice is ready to exit when the focused PR is CI-green and merged.
+Gate 2b exits when the focused PR is CI-green and merged. Issue #8 then closes.
 
-Next bounded slice: Gate 2b — minimum durable event store + projections. It must replay the same accepted event stream through the reducer and prove reconstructed state is identical; it may not introduce alternate transition semantics.
+Next gate: Gate 3 — minimal hosted Recon → Hunt → Validate harness using these owned event-store/reducer contracts.
 <!-- CURRENT_GATE_END -->
 
 ## Queued roadmap
 
-### Gate 2b — Minimum durable event store and projections
-Persist events and reconstruct current run/coverage/candidate state without changing reducer semantics.
-
 ### Gate 3 — Minimal hosted Recon → Hunt → Validate harness
-Implement stateless workers behind the deterministic orchestrator.
+Implement stateless workers behind the deterministic orchestrator. Worker/provider observations become owned events; the orchestrator does not mutate projected state directly.
 
 ### Gate 4 — Scoped/PR audit path and context compiler
 Make diff/subsystem review the default cost-effective path.
@@ -81,4 +81,4 @@ Resolve external facts without weakening target sandbox isolation.
 Add coverage/finding/evidence UI and exports.
 
 ### Gate 9 — Scale only when measured
-Add gapfill, dedup, fleet scheduling, cross-repo tracing, provider strategies, and fixing only after measured need.
+Add gapfill, dedup, fleet scheduling, cross-repository tracing, provider strategies, and fixing only after measured need.
