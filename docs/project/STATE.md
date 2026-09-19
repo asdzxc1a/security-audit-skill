@@ -17,7 +17,7 @@ Updated: 2026-09-19
 - Active issue: #1
 - Branch: gate-0/project-memory
 - PR: #2
-- Status: ready for review; local evidence green; GitHub CI pending
+- Status: ready for review/merge; local and GitHub CI evidence green
 
 ## Blockers
 
@@ -33,8 +33,8 @@ None known for Gate 0.
 - Existing upstream validator suites: 65/65 PASS, 0 failures, 0 skipped.
 - Focused PR #2 is open and records the Gate 0 evidence.
 
-GitHub CI for the final branch state is still required before Gate 0 can be accepted.
+- GitHub Actions Project checks run #2: SUCCESS on the PR branch.
 
 ## Next action
 
-Confirm GitHub CI is green on PR #2, then review/merge Gate 0 and open Gate 1 for the pinned baseline/evaluation harness.
+Review/merge PR #2. After merge, open Gate 1 for the pinned baseline/evaluation harness and move the current-gate pointer in a new focused change.
