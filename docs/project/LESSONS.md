@@ -37,3 +37,9 @@ Implication: hosted evidence should eventually use immutable IDs/hashes tied to 
 Deployment configuration and current dependency advisories may be decisive but unavailable to a source-only sandbox.
 
 Implication: preserve the unresolved fact and a safe way to resolve it. Do not guess and do not give hostile target execution unrestricted Internet access.
+
+## L-007 — Host ambient configuration is part of the audit trust boundary
+
+The first real Claude baseline attempt used a source-only tool list but the host still auto-loaded user-configured MCP servers. The run was cancelled before accepting evidence.
+
+Implication: a baseline/worker adapter must isolate not only model tools but also host-level MCP, plugins, skills, project/user settings, browser integrations, memory, and other ambient capability sources. Tool restriction alone is not a complete isolation boundary.

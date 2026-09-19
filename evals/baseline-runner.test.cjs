@@ -29,6 +29,11 @@ test("dry-run is source-only and does not grant Bash", () => {
   const joined = plan.args.join(" ");
   assert.match(joined, /Read,Glob,Grep,Write,Agent/);
   assert.doesNotMatch(joined, /Bash/);
+  assert.match(joined, /--setting-sources project/);
+  assert.match(joined, /--strict-mcp-config/);
+  assert.match(joined, /mcpServers/);
+  assert.match(joined, /--disable-slash-commands/);
+  assert.match(joined, /--no-chrome/);
   assert.match(joined, /No OS-enforced sandbox/);
   assert.doesNotMatch(joined, /case\.json/);
 });
@@ -97,7 +102,7 @@ test("execute path captures complete artifacts and score with a fake host", { sk
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), "fake-claude-bin-"));
   const runId = "stub-complete-" + process.pid;
   const runDirectory = path.join(repoRoot, ".eval-runs", runId);
-  const workDirectory = path.join(repoRoot, ".eval-work", runId);
+  const workDirectory = path.join(runner.WORK_ROOT, runId);
   try {
     writeFakeClaude(
       bin,
@@ -143,7 +148,7 @@ test("execute path preserves refusal without manufacturing artifacts", { skip: p
   const bin = fs.mkdtempSync(path.join(os.tmpdir(), "fake-claude-bin-"));
   const runId = "stub-refusal-" + process.pid;
   const runDirectory = path.join(repoRoot, ".eval-runs", runId);
-  const workDirectory = path.join(repoRoot, ".eval-work", runId);
+  const workDirectory = path.join(runner.WORK_ROOT, runId);
   try {
     writeFakeClaude(
       bin,

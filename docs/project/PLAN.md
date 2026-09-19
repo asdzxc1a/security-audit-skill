@@ -10,7 +10,7 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 <!-- CURRENT_GATE_START -->
 ## Gate 1 — Pinned baseline and evaluation harness
 
-Status: Source-only Claude adapter ready for review; real baseline pending
+Status: In progress — hardening host isolation before real baseline retry
 Issue: #3
 Upstream baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
 
@@ -22,23 +22,20 @@ Measure the unmodified upstream workflow before refactoring its methodology.
 
 Current bounded subtask:
 
-- make incomplete/refused/failed runs durable without fake artifacts;
-- add a Claude Code host adapter with dry-run by default;
-- require explicit `--execute` plus positive budget cap for model execution;
-- construct a clean model workspace that excludes answer keys;
-- restrict the Gate 1 adapter to source inspection and agent delegation, with no Bash/target execution;
-- capture host stdout/stderr, usage telemetry when available, structured artifacts when valid, and deterministic score for complete runs;
-- test all command-building/failure-record semantics without calling the model.
+- suppress ambient user/project MCP servers and plugins from the Claude host;
+- use project-only settings inside a temporary workspace outside the repository;
+- disable slash commands/skills and Chrome integration;
+- keep the existing source-only tool restriction and explicit budget gate;
+- regression-test the isolation flags;
+- archive the cancelled contaminated attempt as operational evidence.
 
-After this adapter is accepted, run the unchanged skill on the pre-registered corpus using an explicitly budget-authorized baseline matrix.
+After the isolation hardening is accepted, retry exactly one unchanged-skill capped baseline before expanding the matrix.
 
 ### Acceptance
 
-- incomplete/refused/failed run records validate without fake findings/coverage paths;
-- dry-run exposes the exact host/model/profile/source-only invocation;
-- execution cannot start without an explicit positive budget cap;
-- model workspace contains target + skill but not the answer key;
-- arbitrary Bash/target execution is not exposed by this adapter;
+- dry-run exposes project-only settings, strict empty MCP config, disabled slash commands, disabled Chrome integration, and no Bash;
+- model workspace lives outside the repository tree and contains target + skill but not the answer key;
+- the cancelled contaminated run is not promoted as an audit result;
 - npm run check:evals and npm run check pass;
 - CI is green;
 - upstream audit methodology remains unchanged.

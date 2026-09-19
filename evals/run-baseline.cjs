@@ -2,6 +2,7 @@
 
 const crypto = require("node:crypto");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
@@ -9,7 +10,7 @@ const harness = require("./harness.cjs");
 
 const ROOT = path.resolve(__dirname, "..");
 const CASES_ROOT = path.join(__dirname, "cases");
-const WORK_ROOT = path.join(ROOT, ".eval-work");
+const WORK_ROOT = path.join(os.tmpdir(), "security-audit-eval-work");
 const RUN_ROOT = path.join(ROOT, ".eval-runs");
 const SKILL_SOURCE = path.join(ROOT, "skills", "security-audit");
 
@@ -143,6 +144,13 @@ function buildClaudeCommand(context, options) {
     "--output-format",
     "json",
     "--no-session-persistence",
+    "--setting-sources",
+    "project",
+    "--strict-mcp-config",
+    "--mcp-config",
+    JSON.stringify({ mcpServers: {} }),
+    "--disable-slash-commands",
+    "--no-chrome",
     "--model",
     options.model,
     "--permission-mode",
@@ -226,38 +234,6 @@ function copyIfRegular(source, destination) {
   if (!stat.isFile() || stat.isSymbolicLink()) return false;
   fs.copyFileSync(source, destination, fs.constants.COPYFILE_EXCL);
   return true;
-}
-
-function validateCapturedArtifacts(context) {
-  const output = path.join(context.workspace, "output");
-  const findingsSource = path.join(output, "findings.json");
-  const ledgerSource = path.join(output, "coverage-ledger.json");
-  const findingsCopied = copyIfRegular(findingsSource, path.join(context.runDirectory, "findings.json"));
-  const ledgerCopied = copyIfRegular(ledgerSource, path.join(context.runDirectory, "coverage-ledger.json"));
-  if (!findingsCopied || !ledgerCopied) return { complete: false, error: "required audit artifacts are missing" };
-
-  try {
-    const temporaryRecord = {
-      schema_version: 1,
-      run_id: context.runId,
-      case_id: context.definition.id,
-      upstream_baseline: harness.BASE,
-      status: "complete",
-      source_ref: "sha256:" + context.sourceHash,
-      profile: context.profile,
-      host: { name: "claude-code", model: "validation-placeholder" },
-      artifacts: { findings: "findings.json", coverage_ledger: "coverage-ledger.json" },
-      usage: { input_tokens: null, output_tokens: null, total_tokens: null, cost_usd: null },
-      worker_outcomes: emptyOutcomes(),
-      host_error: null,
-    };
-    const runErrors = harness.validateRun(temporaryRecord, context.definition);
-    if (runErrors.length) throw new Error(runErrors.join("; "));
-    const run = harness.loadRun(context.definition, context.runDirectoryWithRecord || context.runDirectory);
-    return { complete: true, run };
-  } catch (error) {
-    return { complete: false, error: error.message };
-  }
 }
 
 function writeRecord(context, options, classification, parsed, hostError, artifactsComplete) {
@@ -374,6 +350,10 @@ function executeBaseline(options) {
       max_budget_usd: options.maxBudgetUsd,
       elapsed_ms: Date.now() - started,
       source_only: true,
+      ambient_settings: "project-only",
+      mcp_config: "empty-strict",
+      slash_commands: "disabled",
+      chrome_integration: "disabled",
       tool_set: ["Read", "Glob", "Grep", "Write", "Agent"],
     }, null, 2) + "\n",
   );
@@ -398,6 +378,10 @@ function dryRun(options) {
     profile: context.profile,
     source_ref: "sha256:" + context.sourceHash,
     source_only: true,
+    ambient_settings: "project-only",
+    mcp_config: "empty-strict",
+    slash_commands: "disabled",
+    chrome_integration: "disabled",
     max_budget_usd: options.maxBudgetUsd,
     timeout_seconds: options.timeoutSeconds,
     command: invocation.command,
@@ -433,4 +417,5 @@ module.exports = {
   looksLikeRefusal,
   parseArgs,
   usageFrom,
+  WORK_ROOT,
 };
