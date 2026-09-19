@@ -50,6 +50,23 @@ Storage tests must prove:
 - unpublished temp files do not become history;
 - projections are rebuilt from replayed reducer state.
 
+### Gate 3 orchestrator core
+
+Covered by `npm run check:domain`.
+
+Orchestrator tests must prove:
+
+- valid candidate and clean covered flows reach the record-verification handoff;
+- thrown/provider failure and explicit refusal become typed outcomes;
+- malformed observations become `malformed_result`;
+- hunter failures cannot become clean coverage;
+- candidate-verifier failure leaves candidates unvalidated;
+- `needs_validation` opens durable finding-handoff evidence before disposition;
+- blocked/deferred coverage makes the run incomplete and prevents final completion;
+- budget exhaustion becomes an explicit incomplete run before worker invocation;
+- persisted/restarted state is identical to orchestrator-returned state;
+- workers mutate nothing directly; all state effects are owned events through the event store.
+
 ### Full repository
 `npm run check`
 
