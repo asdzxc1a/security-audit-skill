@@ -22,6 +22,7 @@ export function isSafeRepositoryPath(value: string): boolean {
     typeof value === "string" &&
     value.length > 0 &&
     value.trim() === value &&
+    Buffer.byteLength(value, "utf8") <= 4096 &&
     !value.startsWith("/") &&
     !value.includes("\\") &&
     !/^[A-Za-z]:/.test(value) &&
@@ -83,7 +84,9 @@ export function createSourceSnapshot(inputs: readonly SourceFileInput[]): Source
     );
   }
 
-  const files = [...byPath.values()].sort((left, right) => left.path.localeCompare(right.path));
+  const files = [...byPath.values()].sort((left, right) =>
+    left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
+  );
   const manifest: JsonValue = {
     schemaVersion: CONTEXT_SCHEMA_VERSION,
     files: files.map((file) => ({
@@ -119,7 +122,7 @@ export function validateSourceSnapshot(snapshot: SourceSnapshot): void {
       throw new SourceSnapshotError("unsafe repository path: " + file.path);
     }
     if (seen.has(file.path)) throw new SourceSnapshotError("duplicate repository path: " + file.path);
-    if (previousPath !== null && previousPath.localeCompare(file.path) >= 0) {
+    if (previousPath !== null && previousPath >= file.path) {
       throw new SourceSnapshotError("snapshot files must be strictly sorted by path");
     }
     validateContent(file.content, file.path);
