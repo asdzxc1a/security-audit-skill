@@ -191,3 +191,39 @@ Provider throws and malformed observations become typed worker outcomes rather t
 - retries, critic waves, final verification, and future MCP actions must preserve the same observation → owned event boundary;
 - projections are read models only;
 - a provider feature may improve reasoning but cannot weaken reducer/event-store invariants.
+
+
+## D-009 — Coverage critics and final verifiers have bounded non-mutating authority
+
+Status: Accepted  
+Date: 2026-09-19
+
+### Context
+
+The portable Cloudflare workflow uses coverage critics to find missed/review-worthy work and fresh final verifiers to check retained records. In a hosted system, those workers must not acquire direct authority over canonical state.
+
+Unbounded critic loops also create cost and termination risk, while silent final-verifier corrections would bypass provenance and independence rules.
+
+### Decision
+
+Coverage critics are observation-only workers.
+
+A critic may request reassignment only for coverage that was previously resolved `covered`. Reopening happens through the owned `coverage_reopened` event, which requires a successful independent critic assignment. Reassigned hunting must use a fresh hunter.
+
+Profile behavior is bounded:
+
+- `quick`: one critic; requested rework is reopened then explicitly deferred, and the run is incomplete;
+- `standard/deep`: one post-wave critic, at most one fresh-hunter reassignment wave, then a different final-clean critic;
+- if the final-clean critic still requests work, that work becomes explicit deferred coverage and the run is incomplete.
+
+Final record verifiers are also observation-only. In this stage they may return only `verified` or `needs_revision`.
+
+- `verified` permits the owned `candidate_final_verified` event;
+- `needs_revision` does not mutate the finding. The run remains incomplete until a future explicit replacement/revalidation contract exists.
+
+### Consequences
+
+- critic/final-verifier model output cannot silently rewrite coverage or findings;
+- partial audits can still finish verification of useful retained findings but must end `incomplete`;
+- unbounded gapfill/new-unit discovery and material record replacement require later explicit contracts;
+- Gate 4 context compilation must preserve these task-specific authority bounds.
