@@ -8,6 +8,7 @@ Updated: 2026-09-19
 - Upstream: cloudflare/security-audit-skill
 - Pinned methodology baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
 - Gate 0 merged as 707d2e7305212bc76045217b4bdf6f36acf44fb3.
+- Gate 1 deterministic eval foundation merged as 5b3421034420bd205c142acd3d92ae19bd9fbd42.
 - Product direction: preserve the portable Cloudflare skill while building a persistent hosted security-research service exposed through MCP/plugin interfaces.
 - Durable memory: GitHub repository docs, issues, PRs, code, and test evidence. Chat is not project state.
 - Upstream audit methodology has not been intentionally changed in this fork.
@@ -16,23 +17,26 @@ Updated: 2026-09-19
 
 - Gate: 1 — Pinned baseline and evaluation harness
 - Active issue: #3
-- Branch: gate-1/eval-harness
-- PR: #4
-- Current bounded subtask: deterministic provider-neutral eval corpus/scorer
-- Status: deterministic foundation ready for review; Gate 1 remains open
+- Branch: gate-1/claude-baseline-runner
+- PR: not opened yet
+- Current bounded subtask: source-only Claude Code baseline adapter and failure-preserving run records
+- Status: in progress
 
 ## Blockers
 
-- None for the deterministic eval foundation.
-- Repeated external model/provider baseline runs may incur billing and require explicit authorization before execution.
+- No blocker for adapter implementation/testing.
+- Real external model execution can consume subscription/API quota and still requires an explicit execution budget when invoked.
+- This Gate 1 adapter intentionally lacks the OS-enforced target-code sandbox required for confirmed dynamic evidence; it must preserve that limitation rather than execute target code.
 
 ## Verified evidence
 
-- Gate 0 memory/CI infrastructure is merged.
-- The fork remains pinned to the upstream methodology baseline.
-- No prompt, companion, finding-schema, or coverage-schema behavior change is part of this subtask.
-- Fresh-clone npm run check: PASS. Upstream validators 65/65 PASS; eval corpus 3 cases valid; eval tests 5/5 PASS.
+- Gate 1 deterministic corpus/scorer is merged.
+- Claude Code 2.1.92 is installed and authenticated on the connected development machine.
+- Claude Code supports non-interactive JSON output, custom agents, tool restriction, and max-budget controls.
+- No prompt, companion, findings-schema, or coverage-schema behavior change is part of this subtask.
+
+Baseline-adapter checks have not yet run on this branch.
 
 ## Next action
 
-Review/merge PR #4. Then define the first real provider/model baseline matrix; obtain explicit authorization before any run that can incur external model billing.
+Finish and test the source-only Claude baseline adapter, open a focused PR, then execute the first budget-authorized unchanged-skill baseline after review/merge.
