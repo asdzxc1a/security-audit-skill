@@ -67,6 +67,24 @@ Orchestrator tests must prove:
 - persisted/restarted state is identical to orchestrator-returned state;
 - workers mutate nothing directly; all state effects are owned events through the event store.
 
+### Gate 3b critic/finalization orchestration
+
+Covered by `npm run check:domain`.
+
+Tests must prove:
+
+- successful independent critic can reopen covered work;
+- critic workers are fresh;
+- reassigned hunters are fresh;
+- quick profile defers critic-requested rework;
+- standard/deep perform one reassignment wave plus a fresh final-clean critic;
+- malformed critic coverage references become `malformed_result`;
+- final verifier `verified` is required for retained confirmed/needs-validation records;
+- `needs_revision` leaves the record unchanged and the run incomplete;
+- rejected candidates skip final verification;
+- partial coverage can preserve final-verified findings but cannot become complete;
+- `needs_validation` final verification preserves its open handoff requirement.
+
 ### Full repository
 `npm run check`
 
