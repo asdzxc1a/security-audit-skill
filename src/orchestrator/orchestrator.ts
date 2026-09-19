@@ -125,6 +125,8 @@ export class AuditOrchestrator {
           assignmentId: execution.assignmentId,
           resolution: "covered",
           candidateIds: [],
+          reviewedPaths: [...result.reviewedPaths],
+          checks: result.checks.map((check) => ({ ...check })),
           unresolved: [],
         });
       } else if (result.resolution === "blocked") {
@@ -134,19 +136,40 @@ export class AuditOrchestrator {
           assignmentId: execution.assignmentId,
           resolution: "blocked",
           candidateIds: [],
+          reviewedPaths: [...result.reviewedPaths],
+          checks: result.checks.map((check) => ({ ...check })),
           unresolved: [...result.unresolved],
         });
         incomplete = true;
       } else {
         const candidateIds: string[] = [];
-        for (const fingerprint of result.candidateFingerprints) {
+        for (const draft of result.candidates) {
+          const current = this.current(request.runId);
+          const existing = Object.values(current.candidates).find(
+            (candidate) => candidate.fingerprint === draft.fingerprint,
+          );
+
+          if (existing) {
+            if (!existing.coverageIds.includes(coverageId)) {
+              this.append(request.runId, {
+                type: "candidate_linked_to_coverage",
+                candidateId: existing.candidateId,
+                coverageId,
+                assignmentId: execution.assignmentId,
+              });
+            }
+            candidateIds.push(existing.candidateId);
+            continue;
+          }
+
           const candidateId = this.ids.next("candidate");
           this.append(request.runId, {
             type: "candidate_registered",
             candidateId,
-            fingerprint,
+            fingerprint: draft.fingerprint,
             coverageId,
             originAssignmentId: execution.assignmentId,
+            claim: structuredClone(draft.claim),
           });
           candidateIds.push(candidateId);
         }
@@ -156,6 +179,8 @@ export class AuditOrchestrator {
           assignmentId: execution.assignmentId,
           resolution: "candidate",
           candidateIds,
+          reviewedPaths: [...result.reviewedPaths],
+          checks: result.checks.map((check) => ({ ...check })),
           unresolved: [],
         });
       }
@@ -283,6 +308,8 @@ export class AuditOrchestrator {
         profile: state.profile,
         candidateId: candidate.candidateId,
         fingerprint: candidate.fingerprint,
+        coverageIds: [...candidate.coverageIds],
+        claim: structuredClone(candidate.claim),
       }),
     );
   }

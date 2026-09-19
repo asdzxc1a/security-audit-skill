@@ -7,64 +7,58 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 - Gate 0 — Durable GitHub memory and upstream baseline.
 - Gate 1 — Pinned eval harness + host-readiness measurement. Closed `incomplete_external_environment`; no model-quality precision/recall claim is made.
 - Gate 2 — Provider-neutral contracts + deterministic fail-closed reducer.
-- Gate 2b — Durable accepted-event store + replay projections. Merged as 23541f83213b900e566aa65570064bf0b1414459.
+- Gate 2b — Durable accepted-event store + replay projections.
+- Gate 3a — Straight-through Recon → Hunt → candidate Validate orchestration. Merged as 5765eedfecffcce84b77794876186bc097106e15.
 
 <!-- CURRENT_GATE_START -->
-## Gate 3 — Minimal hosted Recon → Hunt → Validate harness
+## Gate 3b — Orchestration trust hardening
 
-Status: Straight-through orchestration slice green; ready for review  
+Status: Implementation/local evidence green; ready for review  
 Issue: #12
 
 ### Goal
 
-Execute the first hosted provider-neutral audit workflow with stateless workers while keeping canonical state, authority, budgets, and evidence transitions in the owned reducer/event-store layer.
+Close the post-merge trust defects from Gate 3a before adding more orchestration complexity.
 
 ### Scope
 
-Current bounded subtask:
-
-- provider-neutral `WorkerAdapter`;
-- owned stateless recon, hunter, and candidate-verifier tasks;
-- runtime validation of untrusted worker observations;
-- orchestrator-only translation from observations to owned audit events;
-- all state mutation through `AuditEventStore.append`;
-- deterministic injectable IDs;
-- typed handling for refusal, malformed output, provider error, timeout, permission denial, sandbox failure, and cancellation;
-- straight-through Recon → coverage registration → Hunt → candidate Validate;
-- durable `needs_validation` evidence handoff;
-- explicit incomplete outcomes for worker failures, unresolved coverage/candidates, and budget exhaustion;
-- stop at `record_verification` handoff.
+- bump owned domain/orchestration contracts to version 2;
+- persist bounded coverage evidence for covered/candidate/blocked resolutions;
+- persist bounded substantive candidate claims;
+- pass canonical candidate claim + all linked coverage IDs into candidate verification;
+- consolidate repeated fingerprints into one canonical candidate with explicit coverage links;
+- bound complete untrusted observations, strings, arrays, paths, checks, claims, and adapter metadata;
+- bound provider/malformed error detail;
+- reject oversized durable event envelopes before publication;
+- deep-copy evidence-bearing projections;
+- explicit runtime rejection of unknown event types.
 
 ### Acceptance
 
-- valid candidate flow reaches `record_verification` through persisted events;
-- clean covered flow reaches `record_verification`;
-- recon/provider failure is persisted and run becomes incomplete;
-- hunter failure/refusal cannot become clean coverage;
-- malformed output becomes `malformed_result`;
-- candidate-verifier failure cannot disposition the candidate;
-- `needs_validation` opens durable handoff evidence before disposition;
-- blocked/deferred coverage prevents final completion;
-- budget exhaustion becomes explicit incomplete state;
-- restart event replay reproduces orchestrator state;
-- all existing upstream/eval/domain/storage tests remain green;
+- candidate verifier receives the substantive persisted claim;
+- evidence-free `covered` cannot become canonical coverage;
+- oversized observation cannot poison the durable event stream;
+- duplicate fingerprint across multiple coverage units creates one candidate linked to all units;
+- reducer independently enforces coverage evidence requirements;
+- event store independently rejects oversized envelopes before write;
+- all existing upstream/eval/domain/storage/orchestrator tests remain green;
 - GitHub CI is green.
 
 ### Non-goals
 
-- No real model/provider SDK.
-- No context compiler yet.
-- No coverage-critic/reassignment waves in this first slice.
-- No final record-verification/reporting orchestration yet.
+- No coverage-critic/reassignment orchestration in this slice.
+- No final record-verification/reporting orchestration in this slice.
+- No provider SDK.
+- No context compiler.
 - No MCP server.
 - No sandbox.
 - No prompt/attack-class changes.
 
 ### Exit
 
-This first Gate 3 slice exits when its focused PR is CI-green and merged.
+Gate 3b exits when the focused hardening PR is CI-green and merged.
 
-Next bounded Gate 3 slice: add coverage-critic/reassignment waves and final record-verification/reporting orchestration while preserving the same observation → owned event → reducer/event-store authority chain.
+Next bounded Gate 3 slice: coverage-critic/reassignment waves and final record-verification/reporting orchestration, using the evidence-bearing v2 contracts.
 <!-- CURRENT_GATE_END -->
 
 ## Queued roadmap

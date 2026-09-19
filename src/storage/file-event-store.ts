@@ -30,6 +30,7 @@ const KNOWN_EVENT_TYPES = new Set([
   "coverage_requeued",
   "coverage_classified",
   "candidate_registered",
+  "candidate_linked_to_coverage",
   "candidate_disposition_recorded",
   "candidate_final_verified",
   "evidence_requirement_opened",
@@ -59,6 +60,7 @@ export type EventStoreErrorCode =
   | "corrupt_store"
   | "duplicate_event_id"
   | "sequence_conflict"
+  | "event_too_large"
   | "io_error";
 
 export class EventStoreError extends Error {
@@ -301,8 +303,13 @@ export class FileAuditEventStore implements AuditEventStore {
       ".tmp-" + process.pid + "-" + crypto.randomUUID(),
     );
 
+    const serialized = JSON.stringify(envelope, null, 2) + "\n";
+    if (Buffer.byteLength(serialized, "utf8") > MAX_EVENT_BYTES) {
+      fail("event_too_large", "event envelope exceeds durable byte limit");
+    }
+
     try {
-      writeFileDurably(tempFile, JSON.stringify(envelope, null, 2) + "\n");
+      writeFileDurably(tempFile, serialized);
       try {
         fs.linkSync(tempFile, finalFile);
       } catch (error) {

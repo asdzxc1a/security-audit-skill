@@ -31,12 +31,23 @@ function cloneCoverage(value: CoverageUnit): CoverageUnit {
   return {
     ...value,
     candidateIds: [...value.candidateIds],
+    reviewedPaths: [...value.reviewedPaths],
+    checks: value.checks.map((check) => ({ ...check })),
     unresolved: [...value.unresolved],
   };
 }
 
 function cloneCandidate(value: Candidate): Candidate {
-  return { ...value };
+  return {
+    ...value,
+    coverageIds: [...value.coverageIds],
+    claim: {
+      ...value.claim,
+      trace: value.claim.trace.map((reference) => ({ ...reference })),
+      evidence: value.claim.evidence.map((reference) => ({ ...reference })),
+      conditions: [...value.claim.conditions],
+    },
+  };
 }
 
 function cloneEvidence(value: EvidenceRequirement): EvidenceRequirement {

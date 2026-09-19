@@ -1,12 +1,14 @@
 import type {
   AdapterRef,
   AuditProfile,
+  CandidateClaim,
+  CoverageCheck,
   EvidenceRequirementKind,
   WorkerOutcome,
   WorkerOutcomeKind,
 } from "../domain/contracts";
 
-export const ORCHESTRATION_SCHEMA_VERSION = 1 as const;
+export const ORCHESTRATION_SCHEMA_VERSION = 2 as const;
 export type OrchestrationSchemaVersion = typeof ORCHESTRATION_SCHEMA_VERSION;
 
 export interface AuditRunRequest {
@@ -42,6 +44,8 @@ export interface HunterWorkerTask extends WorkerTaskBase<"hunter"> {
 export interface CandidateVerifierWorkerTask extends WorkerTaskBase<"candidate_verifier"> {
   readonly candidateId: string;
   readonly fingerprint: string;
+  readonly coverageIds: readonly string[];
+  readonly claim: CandidateClaim;
 }
 
 export type WorkerTask =
@@ -59,21 +63,31 @@ export interface ReconWorkerResult {
   readonly coverageIds: readonly string[];
 }
 
+export interface HunterEvidence {
+  readonly reviewedPaths: readonly string[];
+  readonly checks: readonly CoverageCheck[];
+}
+
+export interface CandidateDraft {
+  readonly fingerprint: string;
+  readonly claim: CandidateClaim;
+}
+
 export type HunterWorkerResult =
-  | {
+  | (HunterEvidence & {
       readonly kind: "hunter_result";
       readonly resolution: "covered";
-    }
-  | {
+    })
+  | (HunterEvidence & {
       readonly kind: "hunter_result";
       readonly resolution: "candidate";
-      readonly candidateFingerprints: readonly string[];
-    }
-  | {
+      readonly candidates: readonly CandidateDraft[];
+    })
+  | (HunterEvidence & {
       readonly kind: "hunter_result";
       readonly resolution: "blocked";
       readonly unresolved: readonly string[];
-    };
+    });
 
 export interface CandidateEvidenceNeed {
   readonly kind: EvidenceRequirementKind;
