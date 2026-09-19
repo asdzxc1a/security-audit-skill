@@ -71,3 +71,28 @@ The hosted engine will own persistent state, authorization, budgets, transitions
 ### Consequences
 
 Public MCP tools operate on user intent and stable identifiers; they do not expose internal privileged transitions or a generic shell.
+
+## D-005 — Evidence gates may close incomplete on external-environment blockers
+
+Status: Accepted  
+Date: 2026-09-19
+
+### Context
+
+Gate 1 required at least one clean real provider/model baseline. Bounded real attempts showed that the available Claude host is blocked by invalid OAuth credentials, while the available Codex host is inference-ready but cannot suppress ambient user skill discovery without moving to a clean authentication home. Resolving either condition requires credential/account actions outside ordinary repository work.
+
+### Decision
+
+A project gate may close as `incomplete_external_environment` when all of the following hold:
+
+1. the repository-controlled implementation and deterministic evidence for the gate are green;
+2. bounded real attempts establish the external blocker precisely;
+3. continuing requires credential, production, billing, or other externally authorized action;
+4. the blocker is persisted without converting it into a success claim;
+5. the next gate can use the measured blocker as an owned contract requirement.
+
+This is an exception path, not permission to bypass red repository tests.
+
+### Consequences
+
+Gate 1 closes incomplete without claiming a model-quality baseline. Gate 2 must model provider readiness, ambient capability isolation, and typed host failures explicitly. Future gates use the same pattern rather than silently weakening acceptance or waiting indefinitely on external account state.
