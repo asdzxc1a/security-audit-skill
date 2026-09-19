@@ -92,7 +92,7 @@ export function compileWorkerContext(request: ContextCompileRequest): WorkerCont
   const sourceFiles = request.snapshot.files
     .filter((file) => selectedPathSet.has(file.path))
     .map(cloneSource)
-    .sort((left, right) => left.path.localeCompare(right.path));
+    .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0));
 
   if (sourceFiles.length > limits.maxFiles) {
     throw new ContextCompileError(
@@ -117,7 +117,7 @@ export function compileWorkerContext(request: ContextCompileRequest): WorkerCont
     request.methodologyRefs,
   )
     .map(cloneMethodology)
-    .sort((left, right) => left.ref.localeCompare(right.ref));
+    .sort((left, right) => (left.ref < right.ref ? -1 : left.ref > right.ref ? 1 : 0));
 
   if (methodologyBlocks.length > limits.maxMethodologyBlocks) {
     throw new ContextCompileError(
