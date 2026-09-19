@@ -32,7 +32,7 @@ Full repository check on the Gate 3e code worktree:
 - upstream Cloudflare validators: 65/65 PASS
 - Gate 1 eval/adapter tests: 13/13 PASS
 - strict TypeScript compile: PASS
-- domain/storage/orchestrator tests: 69/69 PASS
+- domain/storage/orchestrator tests: 71/71 PASS
 - npm audit: 0 vulnerabilities
 - diff whitespace check: PASS
 
