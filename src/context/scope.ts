@@ -76,7 +76,7 @@ export function resolveAuditScope(snapshot: SourceSnapshot, scope: AuditScope): 
       }
       baseRef = scope.baseRef;
       headRef = scope.headRef;
-      roots = uniqueSortedPaths(scope.roots, "scope root");
+      roots = uniqueSortedPaths(scope.roots, "scope root", 1024);
       changedPaths = uniqueSortedPaths(scope.changedPaths, "changed", 50_000);
       const changed = new Set(changedPaths);
       candidates = allPaths.filter(
