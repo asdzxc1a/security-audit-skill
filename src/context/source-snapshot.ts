@@ -23,6 +23,9 @@ export function isSafeRepositoryPath(value: string): boolean {
     value.length > 0 &&
     value.trim() === value &&
     Buffer.byteLength(value, "utf8") <= 4096 &&
+    !hasLoneSurrogate(value) &&
+    !/[\u0000-\u001f\u007f]/.test(value) &&
+    !/\p{Default_Ignorable_Code_Point}/u.test(value) &&
     !value.startsWith("/") &&
     !value.includes("\\") &&
     !/^[A-Za-z]:/.test(value) &&
