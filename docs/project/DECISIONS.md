@@ -157,3 +157,37 @@ This file-backed adapter proves semantics; it is not a commitment to the eventua
 - persistence migrations must preserve event order and payload meaning;
 - future database tables, caches, and projectors may optimize reads but cannot introduce alternate transition rules;
 - Gate 3 orchestration writes owned events through an event-store interface rather than mutating projected state directly.
+
+
+## D-008 — Worker adapters are observation sources, not state authorities
+
+Status: Accepted  
+Date: 2026-09-19
+
+### Context
+
+Gate 1 showed provider hosts can refuse, fail authentication, leak ambient capabilities, emit malformed data, or expose different telemetry. Gate 2 established that canonical audit truth is reducer-owned event state.
+
+Gate 3 introduces actual worker execution. Allowing workers or provider SDK objects to mutate coverage/candidate/run state would bypass the reducer and recreate host-specific authority.
+
+### Decision
+
+Worker adapters receive owned, immutable tasks and return untrusted observations.
+
+The orchestrator is the only component that:
+
+1. runtime-validates/classifies those observations;
+2. translates them into owned audit events;
+3. appends those events through `AuditEventStore`.
+
+Workers never receive mutable canonical state handles, never mutate projections, and never choose event sequence/IDs or terminal run state.
+
+Provider throws and malformed observations become typed worker outcomes rather than escaping state accounting.
+
+### Consequences
+
+- provider SDK/result types remain behind adapters;
+- orchestrator tests use fake/scripted workers without provider dependencies;
+- retries, critic waves, final verification, and future MCP actions must preserve the same observation → owned event boundary;
+- projections are read models only;
+- a provider feature may improve reasoning but cannot weaken reducer/event-store invariants.

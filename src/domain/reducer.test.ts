@@ -498,6 +498,48 @@ test("needs_validation handoff remains open until an explicit revalidation trans
   );
 });
 
+
+
+test("blocked and deferred coverage prevent final completion", () => {
+  for (const mode of ["blocked", "deferred"] as const) {
+    const scenario = new Scenario();
+    advanceToHunting(scenario);
+
+    if (mode === "blocked") {
+      scenario.apply({
+        type: "assignment_created",
+        assignmentId: "hunt-1",
+        kind: "hunter",
+        workerId: "hunter-a",
+        coverageIds: ["coverage-1"],
+        candidateId: null,
+      });
+      scenario.apply({ type: "assignment_started", assignmentId: "hunt-1" });
+      scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID });
+      scenario.apply({
+        type: "coverage_resolved",
+        coverageId: "coverage-1",
+        assignmentId: "hunt-1",
+        resolution: "blocked",
+        candidateIds: [],
+        unresolved: ["deployment fact missing"],
+      });
+    } else {
+      scenario.apply({
+        type: "coverage_classified",
+        coverageId: "coverage-1",
+        status: "deferred",
+        reason: "budget exhausted",
+      });
+    }
+
+    scenario.apply({ type: "phase_advanced", to: "candidate_validation" });
+    scenario.apply({ type: "phase_advanced", to: "record_verification" });
+    scenario.apply({ type: "phase_advanced", to: "reporting" });
+    expectCode(() => scenario.attempt({ type: "run_completed" }), "unresolved_work");
+  }
+});
+
 test("incomplete run can terminate with unresolved work, then rejects later events", () => {
   const scenario = new Scenario();
   advanceToHunting(scenario);
