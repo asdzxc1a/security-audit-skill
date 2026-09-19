@@ -1,0 +1,13 @@
+{
+  "host": "claude-code",
+  "model": "sonnet",
+  "timeout_seconds": 900,
+  "max_budget_usd": 1,
+  "elapsed_ms": 192864,
+  "source_only": true,
+  "ambient_settings": "project-only",
+  "mcp_config": "empty-strict",
+  "slash_commands": "disabled",
+  "chrome_integration": "disabled",
+  "tool_set": ["Read", "Glob", "Grep", "Write", "Agent"]
+}
