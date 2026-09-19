@@ -101,3 +101,52 @@ export function createSourceSnapshot(inputs: readonly SourceFileInput[]): Source
     totalBytes,
   });
 }
+
+export function validateSourceSnapshot(snapshot: SourceSnapshot): void {
+  if (!snapshot || snapshot.schemaVersion !== CONTEXT_SCHEMA_VERSION) {
+    throw new SourceSnapshotError("unsupported source snapshot schema");
+  }
+  if (!Array.isArray(snapshot.files) || snapshot.files.length > MAX_SNAPSHOT_FILES) {
+    throw new SourceSnapshotError("snapshot file count exceeds limit");
+  }
+
+  const seen = new Set<string>();
+  let totalBytes = 0;
+  let previousPath: string | null = null;
+
+  for (const file of snapshot.files) {
+    if (!isSafeRepositoryPath(file.path)) {
+      throw new SourceSnapshotError("unsafe repository path: " + file.path);
+    }
+    if (seen.has(file.path)) throw new SourceSnapshotError("duplicate repository path: " + file.path);
+    if (previousPath !== null && previousPath.localeCompare(file.path) >= 0) {
+      throw new SourceSnapshotError("snapshot files must be strictly sorted by path");
+    }
+    validateContent(file.content, file.path);
+    const bytes = Buffer.byteLength(file.content, "utf8");
+    const sha256 = sha256Hex(Buffer.from(file.content, "utf8"));
+    if (file.bytes !== bytes || file.sha256 !== sha256) {
+      throw new SourceSnapshotError("source file metadata mismatch: " + file.path);
+    }
+    seen.add(file.path);
+    previousPath = file.path;
+    totalBytes += bytes;
+  }
+
+  if (totalBytes !== snapshot.totalBytes || totalBytes > MAX_SNAPSHOT_BYTES) {
+    throw new SourceSnapshotError("snapshot total byte count mismatch");
+  }
+
+  const manifest: JsonValue = {
+    schemaVersion: CONTEXT_SCHEMA_VERSION,
+    files: snapshot.files.map((file) => ({
+      path: file.path,
+      sha256: file.sha256,
+      bytes: file.bytes,
+    })),
+  };
+  const expected = "src1_" + sha256Hex(canonicalJson(manifest));
+  if (snapshot.snapshotId !== expected) {
+    throw new SourceSnapshotError("source snapshot id mismatch");
+  }
+}
