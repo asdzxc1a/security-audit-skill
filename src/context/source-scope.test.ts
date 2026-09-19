@@ -39,6 +39,14 @@ test("source snapshot rejects unsafe paths, duplicates, and forged metadata", ()
     SourceSnapshotError,
   );
   assert.throws(
+    () => createSourceSnapshot([{ path: "src/evil\u202Ets.txt", content: "x" }]),
+    SourceSnapshotError,
+  );
+  assert.throws(
+    () => createSourceSnapshot([{ path: "src/zero\u200Bwidth.ts", content: "x" }]),
+    SourceSnapshotError,
+  );
+  assert.throws(
     () =>
       createSourceSnapshot([
         { path: "src/a.ts", content: "a" },
