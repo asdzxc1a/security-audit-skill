@@ -145,6 +145,21 @@ Tests must prove:
 - a crash after worker failure completion but before reason recording reconstructs the reason on resume;
 - fresh and resumed terminal runs share the same phase-driven implementation.
 
+### Gate 3e schema compatibility and memory hardening
+
+Covered by `npm run check:domain` and `npm run check:memory`.
+
+Tests/checks must prove:
+
+- raw schema-v2 stored events validate their original checksum before upcast;
+- terminal schema-v2 histories replay under current code without rewriting historical files;
+- active schema-v2 histories with legacy assignments fail-close incomplete on resume with zero worker calls;
+- mixed v2/v3 history remains replayable after explicit incomplete terminalization;
+- unsupported domain schema versions still fail closed;
+- incomplete-reason overflow is summarized deterministically and cannot wedge terminalization;
+- durable Decision IDs are unique;
+- durable Lesson IDs are unique.
+
 ### Full repository
 `npm run check`
 
