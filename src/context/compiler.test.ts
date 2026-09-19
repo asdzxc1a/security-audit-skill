@@ -170,6 +170,17 @@ test("compiler rejects source and methodology limits deterministically", () => {
     () =>
       compileWorkerContext({
         ...base,
+        methodologyRefs: [],
+        limits: { maxSourceBytes: 10 },
+      }),
+    (error: unknown) =>
+      error instanceof ContextCompileError && error.code === "source_too_large",
+  );
+
+  assert.throws(
+    () =>
+      compileWorkerContext({
+        ...base,
         methodologyRefs: [
           "ATTACK-CLASSES.md#Access control",
           "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust",
@@ -185,12 +196,51 @@ test("compiler rejects source and methodology limits deterministically", () => {
     () =>
       compileWorkerContext({
         ...base,
+        methodologyRefs: ["ATTACK-CLASSES.md#Access control"],
+        limits: { maxMethodologyBlockBytes: 10 },
+      }),
+    (error: unknown) =>
+      error instanceof ContextCompileError &&
+      error.code === "methodology_block_too_large",
+  );
+
+  assert.throws(
+    () =>
+      compileWorkerContext({
+        ...base,
+        methodologyRefs: [
+          "ATTACK-CLASSES.md#Access control",
+          "WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust",
+        ],
+        limits: { maxMethodologyBytes: 20 },
+      }),
+    (error: unknown) =>
+      error instanceof ContextCompileError &&
+      error.code === "methodology_too_large",
+  );
+
+  assert.throws(
+    () =>
+      compileWorkerContext({
+        ...base,
         methodologyRefs: [],
         limits: { maxTaskMetadataBytes: 4 },
       }),
     (error: unknown) =>
       error instanceof ContextCompileError &&
       error.code === "task_metadata_too_large",
+  );
+
+  assert.throws(
+    () =>
+      compileWorkerContext({
+        ...base,
+        methodologyRefs: [],
+        limits: { maxBundleBytes: 100 },
+      }),
+    (error: unknown) =>
+      error instanceof ContextCompileError &&
+      error.code === "bundle_too_large",
   );
 });
 
@@ -209,6 +259,44 @@ test("compiler detects forged source snapshots", () => {
       methodologyCatalog: catalog,
       methodologyRefs: [],
       task: { kind: "recon", data: {} },
+    }),
+  );
+});
+
+
+test("deep task metadata fails before unbounded canonical traversal", () => {
+  const catalog = loadMethodologyCatalog(skillRoot);
+  let deep: unknown = "leaf";
+  for (let index = 0; index < 80; index++) deep = { child: deep };
+
+  assert.throws(
+    () =>
+      compileWorkerContext({
+        snapshot: snapshot(),
+        scope: { mode: "paths", roots: ["src"] },
+        methodologyCatalog: catalog,
+        methodologyRefs: [],
+        task: { kind: "recon", data: deep as never },
+      }),
+    (error: unknown) =>
+      error instanceof ContextCompileError && error.code === "invalid_task",
+  );
+});
+
+test("compiler rejects methodology blocks whose content no longer matches their hash", () => {
+  const catalog = loadMethodologyCatalog(skillRoot);
+  const original = catalog.blocks.get("ATTACK-CLASSES.md#Access control");
+  assert(original);
+  const forged = new Map(catalog.blocks);
+  forged.set(original.ref, { ...original, content: original.content + "tampered\n" });
+
+  assert.throws(() =>
+    compileWorkerContext({
+      snapshot: snapshot(),
+      scope: { mode: "paths", roots: ["src"] },
+      methodologyCatalog: { blocks: forged },
+      methodologyRefs: [original.ref],
+      task: { kind: "hunter", data: {} },
     }),
   );
 });
