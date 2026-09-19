@@ -18,12 +18,13 @@ Updated: 2026-09-19
 - Gate: 3e — Delayed-review compatibility and memory hardening
 - Active issue: #12
 - Branch: gate-3/review-hardening
-- PR: not opened yet
-- Status: implementation and local evidence green; ready for focused PR
+- PR: #19
+- Status: PR #19 CI green; independent trust review clean; external Codex review unavailable due account review quota
 
 ## Blockers
 
-None known for Gate 3e.
+- No code/test blocker.
+- Automated Codex review on the final PR head could not run because the account hit its code-review usage limit. An independent manual trust review of the exact final branch found no unresolved trust-critical issue; this limitation is recorded rather than hidden.
 
 ## Verified evidence
 
@@ -50,4 +51,4 @@ Decision D-012 records the schema-upgrade compatibility rule.
 
 ## Next action
 
-Run the full repository check on the final branch including memory changes, open the Gate 3e PR, require GitHub CI and review clean, then close issue #12 and advance to Gate 4.
+Merge PR #19, close issue #12, and advance durable project memory to Gate 4: scoped/PR audit path and deterministic context compiler.
