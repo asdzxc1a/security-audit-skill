@@ -28,6 +28,8 @@ const KNOWN_EVENT_TYPES = new Set([
   "assignment_completed",
   "coverage_resolved",
   "coverage_requeued",
+  "coverage_reopened",
+  "coverage_unit_added_by_critic",
   "coverage_classified",
   "candidate_registered",
   "candidate_linked_to_coverage",

@@ -222,6 +222,19 @@ export interface CoverageRequeuedEvent extends EventBase<"coverage_requeued"> {
   readonly reason: string;
 }
 
+export interface CoverageReopenedEvent extends EventBase<"coverage_reopened"> {
+  readonly coverageId: string;
+  readonly criticAssignmentId: string;
+  readonly reason: string;
+}
+
+export interface CoverageUnitAddedByCriticEvent
+  extends EventBase<"coverage_unit_added_by_critic"> {
+  readonly coverageId: string;
+  readonly criticAssignmentId: string;
+  readonly reason: string;
+}
+
 export interface CoverageClassifiedEvent extends EventBase<"coverage_classified"> {
   readonly coverageId: string;
   readonly status: "deferred" | "out_of_scope" | "not_applicable";
@@ -289,6 +302,8 @@ export type AuditEvent =
   | AssignmentCompletedEvent
   | CoverageResolvedEvent
   | CoverageRequeuedEvent
+  | CoverageReopenedEvent
+  | CoverageUnitAddedByCriticEvent
   | CoverageClassifiedEvent
   | CandidateRegisteredEvent
   | CandidateLinkedToCoverageEvent

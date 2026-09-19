@@ -10,9 +10,12 @@ import type {
   CandidateDraft,
   CandidateEvidenceNeed,
   CandidateValidationResult,
+  CoverageCriticResult,
+  CoverageCriticWorkerTask,
   FailureWorkerOutcomeKind,
   HunterEvidence,
   HunterWorkerResult,
+  RecordVerificationResult,
   ParsedWorkerObservation,
   ReconWorkerResult,
   WorkerResult,
@@ -313,6 +316,84 @@ function parseCandidateResult(value: unknown): CandidateValidationResult {
   };
 }
 
+function parseCoverageCriticResult(
+  task: CoverageCriticWorkerTask,
+  value: unknown,
+): CoverageCriticResult {
+  if (!isObject(value) || value.kind !== "coverage_critic_result") {
+    fail("expected coverage_critic_result");
+  }
+  const newCoverageIds = uniqueTextArray(
+    value.newCoverageIds ?? [],
+    "newCoverageIds",
+    true,
+    64,
+  ).sort();
+  const reassignCoverageIds = uniqueTextArray(
+    value.reassignCoverageIds ?? [],
+    "reassignCoverageIds",
+    true,
+    64,
+  ).sort();
+  if (typeof value.stop !== "boolean") {
+    fail("coverage critic stop must be boolean");
+  }
+  const hasWork = newCoverageIds.length > 0 || reassignCoverageIds.length > 0;
+  if (value.stop === hasWork) {
+    fail(
+      value.stop
+        ? "coverage critic cannot stop while requesting work"
+        : "coverage critic must stop when no work is requested",
+    );
+  }
+
+  const available = new Map(task.coverage.map((unit) => [unit.coverageId, unit.status]));
+  for (const coverageId of newCoverageIds) {
+    if (available.has(coverageId)) {
+      fail("critic new coverageId already exists " + coverageId);
+    }
+  }
+  for (const coverageId of reassignCoverageIds) {
+    const status = available.get(coverageId);
+    if (status === undefined) {
+      fail("critic requested unknown coverageId " + coverageId);
+    }
+    if (status !== "covered") {
+      fail("critic may reassign only covered coverage units");
+    }
+  }
+  if (newCoverageIds.some((coverageId) => reassignCoverageIds.includes(coverageId))) {
+    fail("critic coverage ids cannot be both new and reassigned");
+  }
+  return {
+    kind: "coverage_critic_result",
+    stop: value.stop,
+    newCoverageIds,
+    reassignCoverageIds,
+  };
+}
+
+function parseRecordVerificationResult(value: unknown): RecordVerificationResult {
+  if (!isObject(value) || value.kind !== "record_verification_result") {
+    fail("expected record_verification_result");
+  }
+  if (value.verdict !== "verified" && value.verdict !== "needs_revision") {
+    fail("record verification verdict is invalid");
+  }
+  const reason = nullableText(value.reason, "reason");
+  if (value.verdict === "needs_revision" && reason === null) {
+    fail("needs_revision requires a reason");
+  }
+  if (value.verdict === "verified" && reason !== null) {
+    fail("verified record must not carry revision reason");
+  }
+  return {
+    kind: "record_verification_result",
+    verdict: value.verdict,
+    reason,
+  };
+}
+
 function resultForTask(task: WorkerTask, value: unknown): WorkerResult {
   switch (task.kind) {
     case "recon":
@@ -321,6 +402,10 @@ function resultForTask(task: WorkerTask, value: unknown): WorkerResult {
       return parseHunterResult(value);
     case "candidate_verifier":
       return parseCandidateResult(value);
+    case "coverage_critic":
+      return parseCoverageCriticResult(task, value);
+    case "record_verifier":
+      return parseRecordVerificationResult(value);
   }
 }
 

@@ -230,3 +230,53 @@ Observation parsing bounds total serialized bytes, field sizes, array cardinalit
 - read projections deep-copy evidence-bearing records;
 - future critic/final-verification/reporting orchestration must use these v2 contracts;
 - there is no supported production v1 event history to migrate; v2 is the current pre-production owned contract.
+
+
+## D-010 — Coverage critics and final verifiers have bounded non-mutating authority
+
+Status: Accepted  
+Date: 2026-09-19
+
+### Context
+
+The portable Cloudflare workflow depends on coverage critics to discover omitted/review-worthy work and fresh final verifiers to challenge retained records. In a hosted system those workers must remain observation sources, not state authorities.
+
+A critic limited to existing IDs would miss its central purpose: discovering unmapped work. An unbounded critic loop, however, creates cost and termination risk. Final verifiers likewise must not silently rewrite a finding.
+
+### Decision
+
+Coverage critics operate on bounded canonical coverage snapshots containing status, reviewed paths, checks, candidate IDs, and unresolved blockers.
+
+A critic result contains:
+
+- an explicit `stop` boolean;
+- bounded new coverage IDs;
+- bounded covered-unit reassignment IDs.
+
+The parser requires the stop decision to be self-consistent: `stop=true` means no requested work; `stop=false` requires work.
+
+Canonical mutations occur only through owned events:
+
+- `coverage_unit_added_by_critic` requires a successful critic;
+- `coverage_reopened` requires a successful critic independent from the prior hunter;
+- reopened current-attempt evidence is cleared; prior evidence remains in immutable event history;
+- any subsequent hunter must be fresh by reducer policy.
+
+Profile behavior is bounded:
+
+- `quick`: one critic; any requested new/reopened work becomes explicit deferred coverage and the run is incomplete;
+- `standard/deep`: one post-wave critic, at most one additional hunter wave over new/reopened work, then a different final-clean critic;
+- any work still requested by final-clean becomes deferred and the run is incomplete.
+
+Final record verifiers receive the canonical candidate claim, linked coverage IDs, retained verdict, and open finding-handoff requirements. Their authority is limited to `verified` or `needs_revision`.
+
+- `verified` permits the owned `candidate_final_verified` event;
+- `needs_revision` cannot mutate the record and instead keeps the run incomplete until a future explicit replacement/revalidation contract exists.
+
+### Consequences
+
+- coverage gaps may be discovered without granting critics direct state mutation;
+- critic work is finite and profile-aware;
+- partial audits can preserve useful fully verified records while remaining explicitly incomplete;
+- final record changes require a later provenance-preserving replacement flow;
+- Gate 3d must add crash/restart resumability without weakening these authority bounds.
