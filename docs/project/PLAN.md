@@ -10,7 +10,7 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 <!-- CURRENT_GATE_START -->
 ## Gate 1 — Pinned baseline and evaluation harness
 
-Status: In progress — hardening host isolation before real baseline retry
+Status: In progress — Claude baseline blocked by provider auth; second host path required
 Issue: #3
 Upstream baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
 
@@ -22,22 +22,20 @@ Measure the unmodified upstream workflow before refactoring its methodology.
 
 Current bounded subtask:
 
-- suppress ambient user/project MCP servers and plugins from the Claude host;
-- use project-only settings inside a temporary workspace outside the repository;
-- disable slash commands/skills and Chrome integration;
-- keep the existing source-only tool restriction and explicit budget gate;
-- regression-test the isolation flags;
-- archive the cancelled contaminated attempt as operational evidence.
+- preserve the isolated Claude provider-auth failure as baseline operational evidence;
+- do not repair credentials silently;
+- add a second host adapter/probe only if it can preserve ambient-config isolation and the source-only boundary;
+- require a minimal authenticated inference probe before any long baseline run;
+- keep the upstream Cloudflare methodology unchanged.
 
-After the isolation hardening is accepted, retry exactly one unchanged-skill capped baseline before expanding the matrix.
+Gate 1 still requires at least one completed real provider/model baseline before exit.
 
 ### Acceptance
 
-- dry-run exposes project-only settings, strict empty MCP config, disabled slash commands, disabled Chrome integration, and no Bash;
-- model workspace lives outside the repository tree and contains target + skill but not the answer key;
-- the cancelled contaminated run is not promoted as an audit result;
-- npm run check:evals and npm run check pass;
-- CI is green;
+- the Claude 401 run is stored as failed operational evidence with null artifacts and zero-token usage;
+- raw transient session identifiers are not committed;
+- a second host path must include static capability checks plus authenticated inference readiness;
+- npm run check remains green;
 - upstream audit methodology remains unchanged.
 
 Full Gate 1 exit still requires at least one explicitly authorized real provider/model baseline to be captured and archived.
