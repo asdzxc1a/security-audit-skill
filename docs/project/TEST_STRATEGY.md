@@ -160,6 +160,26 @@ Tests/checks must prove:
 - durable Decision IDs are unique;
 - durable Lesson IDs are unique.
 
+### Gate 4a deterministic context compiler
+
+Covered by `npm run check:domain`.
+
+Tests must prove:
+
+- source snapshot identity is content-addressed and independent of input order;
+- source files/hashes/bytes/snapshot ID are runtime-revalidated;
+- path traversal, duplicate paths, invalid Unicode source text, and oversized paths fail closed;
+- path scope cannot expand outside explicit roots;
+- diff scope selects only changed files intersecting allowed roots and records unavailable changed paths;
+- diff base/head refs participate in context identity;
+- whole-repository scope requires explicit selection;
+- project-memory/history paths are excluded by default;
+- the methodology catalog resolves real Cloudflare heading and bold attack-class refs;
+- methodology selection is explicit and unknown/duplicate/forged blocks fail closed;
+- file/block ordering is locale-independent;
+- equal inputs serialize to byte-identical bundles/hashes;
+- source, methodology, task, canonical-depth/node, and final-bundle limits fail closed.
+
 ### Full repository
 `npm run check`
 
