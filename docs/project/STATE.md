@@ -18,9 +18,9 @@ Updated: 2026-09-19
 - Gate: 1 — Pinned baseline and evaluation harness
 - Active issue: #3
 - Branch: gate-1/claude-baseline-runner
-- PR: not opened yet
+- PR: #5
 - Current bounded subtask: source-only Claude Code baseline adapter and failure-preserving run records
-- Status: in progress
+- Status: source-only Claude adapter ready for review; real baseline still pending
 
 ## Blockers
 
@@ -39,4 +39,4 @@ Baseline-adapter checks have not yet run on this branch.
 
 ## Next action
 
-Finish and test the source-only Claude baseline adapter, open a focused PR, then execute the first budget-authorized unchanged-skill baseline after review/merge.
+Review/merge PR #5. Then execute the first unchanged-skill baseline with an explicitly approved model budget and archive the resulting complete or incomplete run record.
