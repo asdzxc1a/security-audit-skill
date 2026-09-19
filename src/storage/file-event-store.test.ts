@@ -458,6 +458,31 @@ test("schema-v2 rejects v3-only worker outcome before upcast", () => {
   }
 });
 
+test("schema-v2 rejects current-only event types before upcast", () => {
+  const root = tempRoot();
+  const runId = "legacy-current-only-event";
+  try {
+    writeLegacyV2Store(root, runId, [
+      legacyV2Event(runId, 1, {
+        type: "run_created",
+        sourceSnapshotId: "snapshot-v2",
+        profile: "quick",
+        scopePaths: ["src"],
+        maxWorkerInvocations: 0,
+      }),
+      legacyV2Event(runId, 2, {
+        type: "run_incomplete_reason_recorded",
+        reason: "v3-only event",
+      }),
+    ]);
+
+    const store = new FileAuditEventStore(root);
+    expectStoreCode(() => store.loadState(runId), "corrupt_store");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("accepted event stream survives restart and replays to identical canonical state", () => {
   const root = tempRoot();
   try {
