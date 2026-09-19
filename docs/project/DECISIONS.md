@@ -96,3 +96,36 @@ This is an exception path, not permission to bypass red repository tests.
 ### Consequences
 
 Gate 1 closes incomplete without claiming a model-quality baseline. Gate 2 must model provider readiness, ambient capability isolation, and typed host failures explicitly. Future gates use the same pattern rather than silently weakening acceptance or waiting indefinitely on external account state.
+
+## D-006 — Owned events and reducer govern audit truth
+
+Status: Accepted  
+Date: 2026-09-19
+
+### Context
+
+Gate 1 showed that model/provider hosts vary in authentication, ambient capabilities, refusal/error behavior, and available telemetry. Those differences cannot be allowed to define the application's state machine.
+
+### Decision
+
+The hosted product owns versioned provider-neutral audit contracts. External workers/providers do not mutate canonical audit state directly.
+
+They produce adapter observations that are translated into typed audit events. A deterministic reducer is the authority that accepts or rejects state transitions.
+
+The reducer enforces, at minimum:
+
+- strict run/event sequencing;
+- phase order;
+- worker invocation budget;
+- fresh-worker verification boundaries;
+- failure/refusal/provider-error outcomes cannot close coverage as clean;
+- `needs_validation` has durable handoff evidence;
+- run-blocking evidence prevents completion;
+- unresolved candidates prevent completion;
+- terminal runs reject later mutations.
+
+Persistence added later must store/replay these accepted events without changing reducer semantics.
+
+### Consequences
+
+Provider-specific SDK/result types remain outside the domain layer. Database schemas and MCP tools will project owned state rather than become alternate authorities. Event-store work in the next slice must prove replay equivalence against the reducer.
