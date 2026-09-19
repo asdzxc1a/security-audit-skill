@@ -121,19 +121,19 @@ export interface AuditBudget {
 }
 
 export interface AuditRunState {
-  readonly schemaVersion: DomainSchemaVersion;
-  readonly runId: string;
-  readonly sourceSnapshotId: string;
-  readonly profile: AuditProfile;
-  readonly scopePaths: readonly string[];
-  readonly status: RunStatus;
-  readonly sequence: number;
-  readonly budget: AuditBudget;
-  readonly assignments: Readonly<Record<string, WorkerAssignment>>;
-  readonly coverageUnits: Readonly<Record<string, CoverageUnit>>;
-  readonly candidates: Readonly<Record<string, Candidate>>;
-  readonly evidenceRequirements: Readonly<Record<string, EvidenceRequirement>>;
-  readonly terminalReason: string | null;
+  schemaVersion: DomainSchemaVersion;
+  runId: string;
+  sourceSnapshotId: string;
+  profile: AuditProfile;
+  scopePaths: readonly string[];
+  status: RunStatus;
+  sequence: number;
+  budget: AuditBudget;
+  assignments: Record<string, WorkerAssignment>;
+  coverageUnits: Record<string, CoverageUnit>;
+  candidates: Record<string, Candidate>;
+  evidenceRequirements: Record<string, EvidenceRequirement>;
+  terminalReason: string | null;
 }
 
 interface EventBase<T extends string> {
