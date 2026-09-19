@@ -300,3 +300,39 @@ test("compiler rejects methodology blocks whose content no longer matches their 
     }),
   );
 });
+
+
+test("diff base/head identity participates in context bundle identity", () => {
+  const catalog = loadMethodologyCatalog(skillRoot);
+  const common = {
+    snapshot: snapshot(),
+    methodologyCatalog: catalog,
+    methodologyRefs: [] as const,
+    task: { kind: "recon", data: {} } as const,
+  };
+
+  const first = compileWorkerContext({
+    ...common,
+    scope: {
+      mode: "diff",
+      baseRef: "base-a",
+      headRef: "head",
+      changedPaths: ["src/a.ts"],
+      roots: ["src"],
+    },
+  });
+  const second = compileWorkerContext({
+    ...common,
+    scope: {
+      mode: "diff",
+      baseRef: "base-b",
+      headRef: "head",
+      changedPaths: ["src/a.ts"],
+      roots: ["src"],
+    },
+  });
+
+  assert.notEqual(first.bundleId, second.bundleId);
+  assert.equal(first.scope.baseRef, "base-a");
+  assert.equal(second.scope.baseRef, "base-b");
+});
