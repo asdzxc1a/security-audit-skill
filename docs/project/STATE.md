@@ -20,7 +20,7 @@ Updated: 2026-09-19
 - Active issue: #20
 - Branch: gate-4/context-compiler
 - PR: not opened yet
-- Status: implementation and focused evidence green; full repository check pending
+- Status: full fresh-clone evidence green; ready for focused PR
 
 ## Blockers
 
@@ -30,12 +30,17 @@ Real GitHub/GitLab source adapters and wiring bundles into durable worker task r
 
 ## Verified evidence
 
-Focused `npm run check:domain` on a fresh Gate 4a clone:
+Fresh-clone `npm ci && npm run check && git diff --check` on final Gate 4a head:
 
+- npm dependency audit: 0 vulnerabilities
+- project-memory invariants: PASS
+- upstream Cloudflare validators: 65/65 PASS
+- Gate 1 eval/adapter tests: 13/13 PASS
 - strict TypeScript compile: PASS
 - context/compiler tests: 16/16 PASS
 - existing domain/storage/orchestrator tests: 71/71 PASS
 - combined domain/context suite: 87/87 PASS
+- diff whitespace check: PASS
 
 Gate 4a evidence includes:
 
@@ -58,4 +63,4 @@ Decision D-013 records the deterministic context contract.
 
 ## Next action
 
-Run the full repository check on the final Gate 4a branch, archive acceptance evidence, open the focused PR, and require GitHub CI/review green. Then continue #20 with Gate 4b: wire context bundles into durable task receipts and add a real PR/diff source-provider adapter.
+Open the focused Gate 4a PR, require GitHub CI/review green, then merge. After merge keep #20 active for Gate 4b: bind context bundles into durable task receipts and add the first real Git/PR-diff source adapter.
