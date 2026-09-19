@@ -1,5 +1,5 @@
 import type { JsonValue } from "../domain/contracts";
-import { canonicalJson, normalizeJson, sha256Hex } from "./canonical";
+import { CanonicalJsonError, canonicalJson, normalizeJson, sha256Hex } from "./canonical";
 import {
   CONTEXT_SCHEMA_VERSION,
   type ContextCompileRequest,
@@ -67,10 +67,17 @@ function normalizeTask(task: ContextTaskMetadata): ContextTaskMetadata {
   if (typeof task.kind !== "string" || task.kind.trim() !== task.kind || task.kind.length === 0) {
     throw new ContextCompileError("invalid_task", "task kind must be non-empty trimmed text");
   }
-  return Object.freeze({
-    kind: task.kind,
-    data: normalizeJson(task.data) as JsonValue,
-  });
+  try {
+    return Object.freeze({
+      kind: task.kind,
+      data: normalizeJson(task.data) as JsonValue,
+    });
+  } catch (error) {
+    if (error instanceof CanonicalJsonError) {
+      throw new ContextCompileError("invalid_task", error.message);
+    }
+    throw error;
+  }
 }
 
 export function serializeContextBundle(bundle: WorkerContextBundle): string {
