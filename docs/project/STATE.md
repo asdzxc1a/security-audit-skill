@@ -7,48 +7,55 @@ Updated: 2026-09-19
 - Repository: asdzxc1a/security-audit-skill
 - Upstream: cloudflare/security-audit-skill
 - Pinned methodology baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
-- Gates 0, 1, 2, 2b, 3a, 3b, and 3c are complete.
-- Gate 3d resumable orchestration merged as f88982a0bbb15f782fbd806c2ccbfdfdfd4fa171.
-- Delayed Codex review on merged PR #17 identified one P1 and two P2 issues; Gate 3 remains open until those findings are closed.
-- Current code preserves the Cloudflare audit methodology; hosted orchestration/persistence behavior is owned separately.
+- Gates 0, 1, 2, 2b, and all Gate 3 slices are complete.
+- Gate 3e schema-compatibility/review hardening merged as d9346e6efbf8e13ed9b2ab0afc62018a2dbe00b6.
+- Gate 4a now implements provider-neutral immutable source snapshots, explicit scoped/diff/repository selection, Cloudflare-compatible methodology block selection, and deterministic bounded context bundles.
+- Current code preserves the Cloudflare audit methodology; hosted source/context/orchestration behavior is owned separately.
 - Worker/provider output is untrusted observation; accepted owned events and reducer replay remain canonical audit truth.
+- Worker context is compiled from owned immutable inputs, never from chat history or ambient project-memory history.
 
 ## Current gate
 
-- Gate: 3e — Delayed-review compatibility and memory hardening
-- Active issue: #12
-- Branch: gate-3/review-hardening
-- PR: #19
-- Status: PR #19 CI green; independent trust review clean; external Codex review unavailable due account review quota
+- Gate: 4a — Deterministic context compiler foundation
+- Active issue: #20
+- Branch: gate-4/context-compiler
+- PR: not opened yet
+- Status: implementation and focused evidence green; full repository check pending
 
 ## Blockers
 
-- No code/test blocker.
-- Automated Codex review on the final PR head could not run because the account hit its code-review usage limit. An independent manual trust review of the exact final branch found no unresolved trust-critical issue; this limitation is recorded rather than hidden.
+None known for Gate 4a.
+
+Real GitHub/GitLab source adapters and wiring bundles into durable worker task receipts remain the next bounded slice.
 
 ## Verified evidence
 
-Full repository check on the Gate 3e code worktree:
+Focused `npm run check:domain` on a fresh Gate 4a clone:
 
-- upstream Cloudflare validators: 65/65 PASS
-- Gate 1 eval/adapter tests: 13/13 PASS
 - strict TypeScript compile: PASS
-- domain/storage/orchestrator tests: 71/71 PASS
-- npm audit: 0 vulnerabilities
-- diff whitespace check: PASS
+- context/compiler tests: 16/16 PASS
+- existing domain/storage/orchestrator tests: 71/71 PASS
+- combined domain/context suite: 87/87 PASS
 
-Delayed-review fixes now prove:
+Gate 4a evidence includes:
 
-- terminal schema-v2 event stores remain readable without rewriting historical event bytes;
-- raw schema-v2 checksums are validated before in-memory upcast;
-- active schema-v2 runs with missing historical checkpoints are readable and terminalize explicit `incomplete` with zero worker calls;
-- mixed v2→v3 history remains readable after that terminalization;
-- more than 128 distinct incomplete reasons are summarized with a deterministic overflow sentinel instead of wedging the active run;
-- duplicate D-011 memory is consolidated;
-- duplicate durable Decision/Lesson IDs now fail the memory checker.
+- source snapshot IDs are content-addressed and independent of input file order;
+- snapshot contents/hashes/byte counts are revalidated before context compilation;
+- unsafe/traversal paths and oversized paths are rejected;
+- path scope cannot expand outside explicit roots;
+- diff scope selects only changed paths intersecting allowed roots and records unavailable changed paths;
+- diff base/head refs participate in context bundle identity;
+- repository scope requires explicit mode;
+- project-memory/history paths are excluded by default and require explicit opt-in;
+- methodology selection is explicit and preserves Cloudflare heading plus bold attack-class refs such as `ATTACK-CLASSES.md#Access control`;
+- methodology contents/hashes are revalidated before inclusion;
+- file/methodology ordering is locale-independent;
+- task metadata canonicalization has depth/node limits;
+- source file/count/total, methodology block/count/total, task metadata, and final bundle size all fail closed on overflow;
+- equal owned inputs produce byte-identical serialized bundles and bundle hashes.
 
-Decision D-012 records the schema-upgrade compatibility rule.
+Decision D-013 records the deterministic context contract.
 
 ## Next action
 
-Merge PR #19, close issue #12, and advance durable project memory to Gate 4: scoped/PR audit path and deterministic context compiler.
+Run the full repository check on the final Gate 4a branch, archive acceptance evidence, open the focused PR, and require GitHub CI/review green. Then continue #20 with Gate 4b: wire context bundles into durable task receipts and add a real PR/diff source-provider adapter.
