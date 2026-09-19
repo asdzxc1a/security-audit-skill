@@ -73,7 +73,7 @@ export function loadMethodologyCatalog(rootDirectory: string): MethodologyCatalo
   const entries = fs
     .readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".md"))
-    .sort((left, right) => left.name.localeCompare(right.name));
+    .sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0));
 
   const blocks = new Map<string, MethodologyBlock>();
 
