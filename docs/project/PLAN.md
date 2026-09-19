@@ -5,7 +5,7 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 <!-- CURRENT_GATE_START -->
 ## Gate 0 — Durable GitHub memory and upstream baseline
 
-Status: In progress  
+Status: Ready for review; local checks green, GitHub CI pending  
 Issue: #1  
 Upstream baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
 
