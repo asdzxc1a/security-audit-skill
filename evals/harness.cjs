@@ -6,7 +6,7 @@ const BASE="c1c8a8c1471069fb0e188eeaff69b8e8db6564a8";
 const OUTCOMES=["valid_result","malformed_result","model_refusal","provider_error","timeout","permission_denied","sandbox_failure","cancelled"];
 const RANK={rejected:0,needs_validation:1,confirmed:2};
 function obj(v){return v&&typeof v==="object"&&!Array.isArray(v)}
-function text(v){return typeof v==="string"&&v.trim()===v&&/\\S/u.test(v)}
+function text(v){return typeof v==="string"&&v.trim()===v&&/\S/u.test(v)}
 function read(file){const s=fs.lstatSync(file);if(!s.isFile()||s.isSymbolicLink())throw Error("unsafe JSON file "+file);return JSON.parse(fs.readFileSync(file,"utf8"))}
 function safe(v){return fv.isSafeRelativeSourcePath(v)}
 function validateCase(c){
