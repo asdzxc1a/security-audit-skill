@@ -17,7 +17,7 @@ Updated: 2026-09-19
 - Active issue: #1
 - Branch: gate-0/project-memory
 - PR: #2
-- Status: ready for review/merge; local and GitHub CI evidence green
+- Status: ready for review/merge; local evidence green; PR CI is a merge gate
 
 ## Blockers
 
@@ -33,7 +33,7 @@ None known for Gate 0.
 - Existing upstream validator suites: 65/65 PASS, 0 failures, 0 skipped.
 - Focused PR #2 is open and records the Gate 0 evidence.
 
-- GitHub Actions Project checks run #2: SUCCESS on the PR branch.
+- PR #2 is protected by the Project checks workflow; the PR check status is the authoritative CI evidence at merge time.
 
 ## Next action
 
