@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "id": "clean-documents",
+  "title": "Tenant-scoped clean service",
+  "description": "Both sibling paths enforce tenant ownership.",
+  "upstream_baseline": "c1c8a8c1471069fb0e188eeaff69b8e8db6564a8",
+  "target": {
+    "root": "repo",
+    "recommended_profile": "quick"
+  },
+  "expected_findings": [],
+  "decoys": [
+    {
+      "id": "safe-read",
+      "anchors": [
+        {
+          "file": "index.js",
+          "scope": "getDocument"
+        }
+      ]
+    },
+    {
+      "id": "safe-update",
+      "anchors": [
+        {
+          "file": "index.js",
+          "scope": "updateDocument"
+        }
+      ]
+    }
+  ],
+  "coverage_obligations": [
+    {
+      "id": "read-authz",
+      "selectors": {
+        "surface_contains": "GET /documents/:id",
+        "attack_class_contains": "Access control"
+      }
+    },
+    {
+      "id": "update-authz",
+      "selectors": {
+        "surface_contains": "PATCH /documents/:id",
+        "attack_class_contains": "Access control"
+      }
+    }
+  ]
+}

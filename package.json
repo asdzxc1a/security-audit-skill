@@ -4,6 +4,7 @@
   "scripts": {
     "check:memory": "node scripts/check-memory.cjs",
     "check:validators": "node --test skills/security-audit/validate-findings.test.cjs skills/security-audit/validate-coverage-ledger.test.cjs",
-    "check": "npm run check:memory && npm run check:validators"
+    "check:evals": "node evals/harness.cjs check && node --test evals/harness.test.cjs",
+    "check": "npm run check:memory && npm run check:validators && npm run check:evals"
   }
 }
