@@ -56,3 +56,10 @@ Implication: host adapters need both a static capability/config probe and a mini
 An append-only event store can survive process restart while the workflow still cannot safely resume. If the exact task and normalized result around a worker call are not durable, a restart may duplicate completed work or lose task-specific context.
 
 Implication: checkpoint both sides of external/agent work. Persist the exact owned task before execution and the normalized owned result atomically with successful completion; treat in-progress work at restart as ambiguous rather than successful.
+
+
+## L-010 — Cloudflare methodology references are semantic blocks, not just headings
+
+The portable skill refers to attack classes such as `ATTACK-CLASSES.md#Access control`, but many concrete classes are represented as top-level bold labels inside broader Markdown headings rather than as headings themselves. Companion files use the same pattern.
+
+Implication: tooling that compiles methodology context must preserve the skill's semantic block references instead of assuming Markdown headings are the complete reference model.

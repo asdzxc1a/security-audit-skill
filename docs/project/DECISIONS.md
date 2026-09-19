@@ -365,3 +365,43 @@ New writes remain current-schema only.
 - mixed v2→v3 streams are supported for explicit fail-closed terminalization;
 - no model/provider work is repeated or invented to fill missing legacy checkpoints;
 - future domain schema upgrades must include backward replay/upcast or an explicit tested migration path before the writer version changes.
+
+
+## D-013 — Worker context is a bounded content-addressed owned artifact
+
+Status: Accepted  
+Date: 2026-09-19
+
+### Context
+
+Gate 3 made worker tasks durable and resumable, but tasks still lacked an owned source/methodology context artifact. Passing ambient repository state, chat history, or ad-hoc prompt concatenation directly to providers would make runs non-reproducible and could reintroduce context exhaustion that Cloudflare's larger harness explicitly learned to avoid.
+
+The Cloudflare skill also references methodology at finer granularity than Markdown headings alone: concrete attack classes are often bold labels such as `ATTACK-CLASSES.md#Access control` or `WEB-PROTOCOL-AND-AUTH.md#Host and forwarded-header trust`.
+
+### Decision
+
+Gate 4 uses an owned deterministic context compiler.
+
+Source input is an immutable text snapshot whose `snapshotId` is derived from a canonical sorted manifest of repository-relative path, file content hash, and byte count. The compiler revalidates file contents, hashes, byte counts, ordering, and snapshot identity at runtime.
+
+Scope is explicit:
+
+- `paths` selects only files under named roots;
+- `diff` selects only changed files intersecting optional allowed roots and retains base/head refs plus unavailable changed paths;
+- `repository` requires an explicit full-repository choice.
+
+Project-memory/history paths are excluded from worker source context by default and require explicit opt-in.
+
+Methodology is selected only by explicit block refs from the existing Cloudflare markdown corpus. The catalog recognizes both heading blocks and Cloudflare's top-level bold attack-class labels. Selected block content/hash/bytes are revalidated.
+
+The compiler sorts paths and refs with locale-independent ordering, canonicalizes bounded task metadata, and emits a provider-neutral `WorkerContextBundle`. Its `bundleId` is SHA-256 over the canonical bundle payload.
+
+Context is never silently truncated. File count/size, source total, methodology block/count/total, task metadata, canonical depth/node count, and final serialized bundle size are hard fail-closed limits.
+
+### Consequences
+
+- equal owned inputs yield byte-identical serialized context and bundle identity;
+- chat history, GitHub project-memory history, and ambient host context are not implicit worker inputs;
+- diff/subsystem audits can be smaller and reproducible without weakening audit-state authority;
+- Gate 4b must bind durable worker task receipts to these context bundles rather than provider-specific prompt strings;
+- provider adapters may render a bundle into their own request format, but cannot change its source/methodology contents without changing the bundle identity.
