@@ -18,6 +18,7 @@ import { projectAuditState } from "./projection";
 const MAX_EVENT_BYTES = 1024 * 1024;
 const EVENT_FILE_PATTERN = /^([0-9]{16})\.json$/;
 const CHECKSUM_PATTERN = /^[a-f0-9]{64}$/;
+const LEGACY_DOMAIN_SCHEMA_VERSION = 2 as const;
 
 const KNOWN_EVENT_TYPES = new Set([
   "run_created",
@@ -43,6 +44,28 @@ const KNOWN_EVENT_TYPES = new Set([
   "run_failed",
   "run_cancelled",
 ]);
+
+const LEGACY_V2_EVENT_TYPES = new Set(
+  [...KNOWN_EVENT_TYPES].filter((type) => type !== "run_incomplete_reason_recorded"),
+);
+
+const LEGACY_V2_TASK_RECEIPT = {
+  schemaVersion: DOMAIN_SCHEMA_VERSION,
+  legacyDomainSchemaVersion: LEGACY_DOMAIN_SCHEMA_VERSION,
+  resumable: false,
+  task: {
+    kind: "legacy_task_unavailable",
+  },
+} as const;
+
+const LEGACY_V2_RESULT_RECEIPT = {
+  schemaVersion: DOMAIN_SCHEMA_VERSION,
+  legacyDomainSchemaVersion: LEGACY_DOMAIN_SCHEMA_VERSION,
+  resumable: false,
+  result: {
+    kind: "legacy_result_unavailable",
+  },
+} as const;
 
 interface StoredEventEnvelope {
   readonly storeVersion: typeof EVENT_STORE_SCHEMA_VERSION;
@@ -118,8 +141,45 @@ function canonicalJson(value: unknown): string {
   fail("corrupt_store", "unsupported canonical JSON value");
 }
 
+function checksumJson(value: unknown): string {
+  return crypto.createHash("sha256").update(canonicalJson(value), "utf8").digest("hex");
+}
+
 function checksumEvent(event: AuditEvent): string {
-  return crypto.createHash("sha256").update(canonicalJson(event), "utf8").digest("hex");
+  return checksumJson(event);
+}
+
+function upcastLegacyV2Event(value: Record<string, unknown>, file: string): AuditEvent {
+  if (
+    value.schemaVersion !== LEGACY_DOMAIN_SCHEMA_VERSION ||
+    typeof value.eventId !== "string" ||
+    typeof value.runId !== "string" ||
+    !Number.isSafeInteger(value.sequence) ||
+    typeof value.type !== "string" ||
+    !LEGACY_V2_EVENT_TYPES.has(value.type)
+  ) {
+    fail("corrupt_store", "invalid legacy-v2 event identity fields in " + file);
+  }
+
+  const event = structuredClone(value) as Record<string, unknown>;
+  event.schemaVersion = DOMAIN_SCHEMA_VERSION;
+
+  if (event.type === "assignment_created") {
+    event.taskReceipt = structuredClone(LEGACY_V2_TASK_RECEIPT);
+  }
+
+  if (event.type === "assignment_completed") {
+    const outcome = event.outcome;
+    if (!isObject(outcome) || typeof outcome.kind !== "string") {
+      fail("corrupt_store", "invalid legacy-v2 assignment outcome in " + file);
+    }
+    event.resultReceipt =
+      outcome.kind === "valid_result"
+        ? structuredClone(LEGACY_V2_RESULT_RECEIPT)
+        : null;
+  }
+
+  return event as unknown as AuditEvent;
 }
 
 function replayStoredEvents(events: readonly AuditEvent[]): AuditRunState | null {
@@ -213,21 +273,28 @@ function parseEnvelope(value: unknown, file: string): StoredEventEnvelope {
   }
   if (!isObject(value.event)) fail("corrupt_store", "missing event object in " + file);
 
-  const event = value.event as unknown as AuditEvent;
-  if (
-    event.schemaVersion !== DOMAIN_SCHEMA_VERSION ||
-    typeof event.eventId !== "string" ||
-    typeof event.runId !== "string" ||
-    !Number.isSafeInteger(event.sequence) ||
-    typeof event.type !== "string" ||
-    !KNOWN_EVENT_TYPES.has(event.type)
-  ) {
-    fail("corrupt_store", "invalid event identity fields in " + file);
-  }
-
-  const checksum = checksumEvent(event);
+  const rawEvent = value.event;
+  const checksum = checksumJson(rawEvent);
   if (checksum !== value.checksum) {
     fail("corrupt_store", "event checksum mismatch in " + file);
+  }
+
+  let event: AuditEvent;
+  if (rawEvent.schemaVersion === DOMAIN_SCHEMA_VERSION) {
+    if (
+      typeof rawEvent.eventId !== "string" ||
+      typeof rawEvent.runId !== "string" ||
+      !Number.isSafeInteger(rawEvent.sequence) ||
+      typeof rawEvent.type !== "string" ||
+      !KNOWN_EVENT_TYPES.has(rawEvent.type)
+    ) {
+      fail("corrupt_store", "invalid event identity fields in " + file);
+    }
+    event = rawEvent as unknown as AuditEvent;
+  } else if (rawEvent.schemaVersion === LEGACY_DOMAIN_SCHEMA_VERSION) {
+    event = upcastLegacyV2Event(rawEvent, file);
+  } else {
+    fail("corrupt_store", "unsupported domain event schema version in " + file);
   }
 
   return {

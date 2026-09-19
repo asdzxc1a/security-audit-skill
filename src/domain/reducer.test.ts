@@ -873,6 +873,32 @@ test("coverage critic assignments require fresh workers", () => {
 });
 
 
+
+
+test("incomplete reason overflow summarizes instead of wedging the run", () => {
+  const scenario = new Scenario();
+  createRun(scenario);
+
+  for (let index = 0; index < 260; index++) {
+    scenario.apply({
+      type: "run_incomplete_reason_recorded",
+      reason: "reason-" + index,
+    });
+  }
+
+  assert.equal(scenario.state?.incompleteReasons.length, 128);
+  assert.equal(
+    scenario.state?.incompleteReasons.at(-1),
+    "additional incomplete reasons omitted",
+  );
+
+  const terminal = scenario.apply({
+    type: "run_marked_incomplete",
+    reason: "many independent blockers",
+  });
+  assert.equal(terminal.status, "incomplete");
+});
+
 test("persisted incomplete reason prevents run_completed at the reducer boundary", () => {
   const scenario = new Scenario();
   createRun(scenario);

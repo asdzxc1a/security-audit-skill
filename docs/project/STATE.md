@@ -7,60 +7,48 @@ Updated: 2026-09-19
 - Repository: asdzxc1a/security-audit-skill
 - Upstream: cloudflare/security-audit-skill
 - Pinned methodology baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
-- Gate 0 memory foundation is complete.
-- Gate 1 closed `incomplete_external_environment` with deterministic eval/host evidence and no model-quality baseline claim.
-- Gate 2 provider-neutral contracts/reducer and Gate 2b durable event persistence are complete.
-- Gate 3a straight-through orchestration merged as 5765eedfecffcce84b77794876186bc097106e15.
-- Gate 3b evidence-bearing/bounded orchestration hardening merged as 8f3dee2cd3a71fe7db52081a3194a5c3885f2d63.
-- Gate 3c bounded coverage critics/final verification/reporting merged as 016139cefd603efa48551fa051f41df028411734.
-- Gate 3d now makes the full `runToTerminal` path restart-safe through durable task/result receipts and a phase-driven resume engine.
-- Worker/provider output is untrusted observation; only orchestrator-generated owned events may mutate canonical audit truth.
-- Upstream Cloudflare audit methodology remains intentionally unchanged.
+- Gates 0, 1, 2, 2b, 3a, 3b, and 3c are complete.
+- Gate 3d resumable orchestration merged as f88982a0bbb15f782fbd806c2ccbfdfdfd4fa171.
+- Delayed Codex review on merged PR #17 identified one P1 and two P2 issues; Gate 3 remains open until those findings are closed.
+- Current code preserves the Cloudflare audit methodology; hosted orchestration/persistence behavior is owned separately.
+- Worker/provider output is untrusted observation; accepted owned events and reducer replay remain canonical audit truth.
 
 ## Current gate
 
-- Gate: 3d — Resumable orchestration checkpoints
+- Gate: 3e — Delayed-review compatibility and memory hardening
 - Active issue: #12
-- Branch: gate-3/resumable-orchestration
-- PR: not opened yet
-- Status: implementation and local evidence green; ready for focused PR
+- Branch: gate-3/review-hardening
+- PR: #19
+- Status: PR #19 CI green; independent trust review clean; external Codex review unavailable due account review quota
 
 ## Blockers
 
-None known for Gate 3d.
-
-Real provider adapters, context compilation, target-execution sandboxing, and MCP/UI remain later gates.
+- No code/test blocker.
+- Automated Codex review on the final PR head could not run because the account hit its code-review usage limit. An independent manual trust review of the exact final branch found no unresolved trust-critical issue; this limitation is recorded rather than hidden.
 
 ## Verified evidence
 
-Full repository check on Gate 3d worktree:
+Full repository check on the Gate 3e code worktree:
 
-- memory invariants: PASS
 - upstream Cloudflare validators: 65/65 PASS
 - Gate 1 eval/adapter tests: 13/13 PASS
 - strict TypeScript compile: PASS
-- domain/storage/orchestrator tests: 66/66 PASS
+- domain/storage/orchestrator tests: 71/71 PASS
 - npm audit: 0 vulnerabilities
 - diff whitespace check: PASS
 
-Restart/checkpoint evidence includes:
+Delayed-review fixes now prove:
 
-- domain schema v3 persists a bounded versioned task receipt at assignment creation;
-- successful assignment completion atomically persists a bounded normalized result receipt; failed/cancelled/interrupted assignments must carry no result receipt;
-- full `runToTerminal` and `resumeToTerminal` use the same phase-driven workflow;
-- completed hunter, critic, candidate-verifier, and final-verifier receipts resume without re-calling those completed workers;
-- a durably planned assignment resumes from its original stored task;
-- an ambiguous in-progress assignment becomes `orchestrator_interrupted` and retries with a fresh worker;
-- interrupted critic retries preserve the exact original critic round from the task receipt;
-- active incomplete reasons are durable canonical state and prevent `run_completed` at the reducer boundary;
-- a crash after critic failure completion but before reason recording reconstructs the reason on resume;
-- task/result receipts are bounded and versioned; durable result receipts are re-validated through the task-specific parser on resume;
-- task receipts are checked against run/source/profile and assignment candidate/coverage identity before restart execution;
-- event-store restart/projection preserves task and result receipts;
-- terminal incomplete summaries are deterministically byte-bounded.
+- terminal schema-v2 event stores remain readable without rewriting historical event bytes;
+- raw schema-v2 checksums are validated before in-memory upcast;
+- active schema-v2 runs with missing historical checkpoints are readable and terminalize explicit `incomplete` with zero worker calls;
+- mixed v2→v3 history remains readable after that terminalization;
+- more than 128 distinct incomplete reasons are summarized with a deterministic overflow sentinel instead of wedging the active run;
+- duplicate D-011 memory is consolidated;
+- duplicate durable Decision/Lesson IDs now fail the memory checker.
 
-Decision D-011 records assignment checkpoints and resumable orchestration as canonical hosted behavior.
+Decision D-012 records the schema-upgrade compatibility rule.
 
 ## Next action
 
-Open/review/merge the Gate 3d PR with GitHub CI and review green. Then close issue #12 and advance to Gate 4: scoped/PR audit path and deterministic context compiler.
+Merge PR #19, close issue #12, and advance durable project memory to Gate 4: scoped/PR audit path and deterministic context compiler.

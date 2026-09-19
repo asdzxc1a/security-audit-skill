@@ -72,6 +72,15 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+
+function isLegacyV2CheckpointReceipt(value: unknown): boolean {
+  return (
+    isObject(value) &&
+    value.legacyDomainSchemaVersion === 2 &&
+    value.resumable === false
+  );
+}
+
 export class AuditOrchestrator {
   constructor(
     private readonly store: AuditEventStore,
@@ -277,8 +286,22 @@ export class AuditOrchestrator {
   }
 
   async resumeToTerminal(runId: string): Promise<AuditRunState> {
-    if (this.store.loadState(runId) === null) {
+    const initial = this.store.loadState(runId);
+    if (initial === null) {
       throw new OrchestrationError("run_missing", "run does not exist: " + runId);
+    }
+    if (TERMINAL.has(initial.status)) return initial;
+
+    const hasLegacyV2Checkpoint = Object.values(initial.assignments).some(
+      (assignment) =>
+        isLegacyV2CheckpointReceipt(assignment.taskReceipt) ||
+        isLegacyV2CheckpointReceipt(assignment.resultReceipt),
+    );
+    if (hasLegacyV2Checkpoint) {
+      const reason =
+        "schema-v2 run lacks durable task/result checkpoints required for safe resume";
+      this.recordIncompleteReason(runId, reason);
+      return this.markIncomplete(runId, reason);
     }
 
     for (let iteration = 0; iteration < 10_000; iteration++) {

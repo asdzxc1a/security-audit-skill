@@ -51,7 +51,7 @@ A Claude Code baseline host reported itself logged in during a static auth-statu
 Implication: host adapters need both a static capability/config probe and a minimal authenticated inference probe before launching a longer baseline. "Logged in" is not enough evidence that the provider is operational.
 
 
-## L-007 — Durable state is not the same as resumable orchestration
+## L-009 — Durable state is not the same as resumable orchestration
 
 An append-only event store can survive process restart while the workflow still cannot safely resume. If the exact task and normalized result around a worker call are not durable, a restart may duplicate completed work or lose task-specific context.
 
