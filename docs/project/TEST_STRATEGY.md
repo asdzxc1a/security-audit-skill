@@ -82,6 +82,25 @@ Regression tests must prove:
 - candidate claims and coverage evidence survive restart/projection;
 - runtime unknown event types fail closed.
 
+### Gate 3c critic convergence and finalization
+
+Covered by `npm run check:domain`.
+
+Tests must prove:
+
+- recon semantic definitions are bounded and semantic aliases are rejected;
+- the orchestrator owns coverage IDs and hunters receive persisted coverage semantics;
+- standard/deep require two consecutive clean fresh critic passes;
+- critic reassignment reopens coverage and invokes a fresh hunter;
+- candidate coverage may be re-reviewed without duplicating the canonical root cause;
+- blocked/deferred coverage cannot be clean-stopped;
+- critic failure and budget exhaustion produce incomplete state;
+- retained candidate disposition persists a verifier-authored canonical claim and rationale;
+- final verifier receives that canonical record and is independent of hunter/candidate verifier;
+- final accept/reject reasons persist;
+- rejected needs_validation records resolve obsolete handoff requirements;
+- reporting/complete remain reducer-gated.
+
 ### Full repository
 `npm run check`
 
