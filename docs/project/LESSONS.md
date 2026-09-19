@@ -49,3 +49,10 @@ Implication: a baseline/worker adapter must isolate not only model tools but als
 A Claude Code baseline host reported itself logged in during a static auth-status probe, but the first isolated inference attempt later failed with a 401 invalid OAuth token before using any model tokens.
 
 Implication: host adapters need both a static capability/config probe and a minimal authenticated inference probe before launching a longer baseline. "Logged in" is not enough evidence that the provider is operational.
+
+
+## L-007 — Durable state is not the same as resumable orchestration
+
+An append-only event store can survive process restart while the workflow still cannot safely resume. If the exact task and normalized result around a worker call are not durable, a restart may duplicate completed work or lose task-specific context.
+
+Implication: checkpoint both sides of external/agent work. Persist the exact owned task before execution and the normalized owned result atomically with successful completion; treat in-progress work at restart as ambiguous rather than successful.
