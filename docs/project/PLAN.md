@@ -16,7 +16,7 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 <!-- CURRENT_GATE_START -->
 ## Gate 3e — Delayed-review compatibility and memory hardening
 
-Status: Implementation/local evidence green; ready for review  
+Status: PR #19 CI green; independent trust review clean; external Codex review unavailable due quota  
 Issue: #12
 
 ### Goal
