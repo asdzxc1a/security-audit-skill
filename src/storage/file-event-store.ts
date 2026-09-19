@@ -45,9 +45,29 @@ const KNOWN_EVENT_TYPES = new Set([
   "run_cancelled",
 ]);
 
-const LEGACY_V2_EVENT_TYPES = new Set(
-  [...KNOWN_EVENT_TYPES].filter((type) => type !== "run_incomplete_reason_recorded"),
-);
+const LEGACY_V2_EVENT_TYPES = new Set([
+  "run_created",
+  "phase_advanced",
+  "coverage_unit_registered",
+  "assignment_created",
+  "assignment_started",
+  "assignment_completed",
+  "coverage_resolved",
+  "coverage_requeued",
+  "coverage_reopened",
+  "coverage_unit_added_by_critic",
+  "coverage_classified",
+  "candidate_registered",
+  "candidate_linked_to_coverage",
+  "candidate_disposition_recorded",
+  "candidate_final_verified",
+  "evidence_requirement_opened",
+  "evidence_requirement_resolved",
+  "run_completed",
+  "run_marked_incomplete",
+  "run_failed",
+  "run_cancelled",
+]);
 
 const LEGACY_V2_WORKER_OUTCOME_KINDS = new Set([
   "valid_result",
