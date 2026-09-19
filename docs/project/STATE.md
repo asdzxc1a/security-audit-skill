@@ -10,52 +10,59 @@ Updated: 2026-09-19
 - Gate 0 memory foundation is complete.
 - Gate 1 closed `incomplete_external_environment` with deterministic eval/host evidence and no model-quality baseline claim.
 - Gate 2 provider-neutral contracts/reducer and Gate 2b durable event persistence are complete.
-- Gate 3 straight-through Recon → Hunt → candidate Validate orchestration merged as 5765eedfecffcce84b77794876186bc097106e15.
-- Post-merge review of that slice found four trust defects; the current hardening branch fixes them with domain/orchestration schema v2.
-- Canonical coverage now carries bounded reviewed paths/checks; canonical candidates carry bounded substantive claims into validation.
-- Duplicate root-cause fingerprints consolidate into one candidate explicitly linked to all relevant coverage units.
-- Untrusted worker observations and durable event envelopes are bounded before persistence.
-- Worker/provider output is untrusted observation; only orchestrator-generated owned events may mutate canonical audit truth.
+- Gate 3a straight-through orchestration merged as 5765eedfecffcce84b77794876186bc097106e15.
+- Gate 3b evidence-bearing trust hardening merged as 8f3dee2cd3a71fe7db52081a3194a5c3885f2d63.
+- Gate 3c now implements semantic coverage planning, critic convergence/reassignment, canonical candidate-validation records, independent final record verification, reporting transition, and terminal completion.
+- Owned domain/orchestration contracts are schema version 3.
+- Recon proposes bounded coverage semantics; the orchestrator, not the worker, owns coverage IDs.
+- Standard/deep audits require two consecutive clean critic passes by fresh workers; quick requires one.
+- Retained candidates carry the independent candidate verifier's validated claim and rationale before final verification.
+- Worker/provider output is untrusted observation; only owned events through the reducer/event store mutate canonical audit truth.
 - Upstream Cloudflare audit methodology remains intentionally unchanged.
 
 ## Current gate
 
-- Gate: 3 — Minimal hosted Recon → Hunt → Validate harness
+- Gate: 3c — Critic convergence and final verification/reporting
 - Active issue: #12
-- Branch: gate-3/orchestrator-hardening
+- Branch: gate-3/critics-finalization
 - PR: not opened yet
-- Current bounded subtask: post-merge trust hardening for evidence-bearing orchestration contracts
 - Status: implementation and local evidence green; ready for focused PR
 
 ## Blockers
 
-None known for this hardening slice.
+None known for Gate 3c.
 
-Coverage-critic/reassignment waves and final record-verification/reporting remain queued until these review findings are merged.
+The next reliability gap is resumability after process interruption; the event history is durable, but current orchestration entrypoints still require a new run.
 
 ## Verified evidence
 
-Full repository check on the hardening worktree:
+Full repository check on the Gate 3c worktree:
 
 - memory invariants: PASS
 - upstream Cloudflare validators: 65/65 PASS
 - Gate 1 eval/adapter tests: 13/13 PASS
 - strict TypeScript compile: PASS
-- domain/storage/orchestrator tests: 38/38 PASS
+- domain/storage/orchestrator tests: 50/50 PASS
 - diff whitespace check: PASS
 
-Review-regression evidence includes:
+Gate 3c evidence includes:
 
-- candidate verifier receives the persisted substantive claim and linked coverage IDs;
-- evidence-free `covered` is rejected by both observation parsing and reducer policy;
-- oversized worker observations become bounded `malformed_result` without poisoning event storage;
-- event store rejects oversized durable envelopes before publication;
-- duplicate fingerprints across coverage units consolidate into one candidate with explicit coverage links;
-- projections deep-copy candidate claims and coverage evidence;
-- unknown runtime event types fail closed.
+- semantic coverage definitions persist surface, boundary, subsystem, attack class, lifecycle, starting paths, and methodology references;
+- semantic duplicate coverage is rejected;
+- coverage IDs are orchestrator-owned;
+- hunter tasks receive the owned coverage definition;
+- standard/deep require two consecutive clean fresh critics;
+- critic-directed reopens trigger a fresh hunter and can re-review candidate coverage without duplicating the root cause;
+- blocked/deferred coverage cannot be hidden by a clean critic;
+- critic failure or budget exhaustion produces explicit incomplete state;
+- candidate validation persists a verifier-authored validated claim and rationale;
+- fresh record verifiers receive that canonical record;
+- final accept/reject is persisted with reason;
+- final rejection of needs_validation resolves its obsolete handoff requirement;
+- reporting reaches complete only after reducer completion invariants pass.
 
-Decision D-009 records the evidence-bearing schema-v2 contract.
+Decision D-010 records the schema-v3 identity/convergence/final-verification contract.
 
 ## Next action
 
-Open/review/merge the Gate 3 hardening PR with GitHub CI green. Then continue issue #12 with coverage-critic/reassignment waves plus final record-verification/reporting orchestration.
+Open/review/merge the Gate 3c PR with GitHub CI and review feedback green. Then continue issue #12 with Gate 3d: resumable orchestration/recovery from durable event history after interrupted assignments.
