@@ -5,54 +5,47 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 ## Completed gates
 
 - Gate 0 — Durable GitHub memory and upstream baseline.
-- Gate 1 — Pinned eval harness + host-readiness measurement. Closed `incomplete_external_environment`; no model-quality precision/recall claim is made.
+- Gate 1 — Pinned eval harness + host-readiness measurement.
 - Gate 2 — Provider-neutral contracts + deterministic fail-closed reducer.
 - Gate 2b — Durable accepted-event store + replay projections.
 - Gate 3a — Straight-through Recon → Hunt → candidate Validate orchestration.
 - Gate 3b — Evidence-bearing/bounded orchestration hardening.
-- Gate 3c — Bounded coverage critics, final verification, reporting, and terminalization.
-- Gate 3d — Resumable orchestration checkpoints. Merged as f88982a0bbb15f782fbd806c2ccbfdfdfd4fa171.
+- Gate 3c — Coverage critics, final verification, reporting, and terminalization.
+- Gate 3d — Resumable orchestration checkpoints.
+- Gate 3e — Schema-v2 replay and incomplete-state hardening.
 
 <!-- CURRENT_GATE_START -->
-## Gate 3e — Delayed-review compatibility and memory hardening
+## Gate 3f — Historical schema semantic validation
 
-Status: PR #19 CI green; independent trust review clean; external Codex review unavailable due quota  
+Status: Implementation/full local evidence green; ready for review
 Issue: #12
 
 ### Goal
 
-Close all delayed trust/reliability findings from merged PR #17 before declaring Gate 3 complete.
+Close the remaining delayed schema-compatibility findings before declaring Gate 3 complete.
 
 ### Scope
 
-- preserve schema-v2 event-store readability after the schema-v3 writer upgrade;
-- checksum historical events in their original schema before in-memory upcast;
-- leave historical event bytes/checksum chain unchanged during reads;
-- mark synthesized legacy checkpoint receipts explicitly non-resumable;
-- safely terminalize nonterminal schema-v2 runs with legacy assignments as incomplete without worker calls;
-- allow current-schema terminalization events to extend a legacy checksum chain;
-- summarize incomplete-reason overflow instead of rejecting reason 129+;
-- consolidate duplicate D-011 and duplicate Lesson ID;
-- make memory CI reject duplicate Decision/Lesson IDs.
+- track each stored event's raw domain schema version separately from its upcast replay event;
+- require raw schema versions to be monotonic within a stream;
+- allow supported v2 prefix → v3 suffix only;
+- reject any v3 → v2 downgrade even when checksums are valid;
+- validate schema-v2-specific worker outcome kinds before adding v3 receipt placeholders;
+- keep all Gate 3e raw-checksum/upcast/readability behavior unchanged.
 
 ### Acceptance
 
-- terminal schema-v2 store reads under current code without rewriting original files;
-- active schema-v2 store with an assignment reads and terminalizes incomplete without provider invocation;
-- mixed v2/v3 stream remains readable after terminalization;
-- original v2 checksum validation occurs before upcast;
-- unsupported schema versions still fail closed;
-- >128 unique incomplete reasons do not wedge the reducer and can still terminalize incomplete;
-- D-011 exists exactly once;
-- all Decision IDs and Lesson IDs are unique and checked by `check:memory`;
+- checksum-valid v3→v2 stream fails closed before replay;
+- schema-v2 event using v3-only worker outcome fails before upcast;
+- valid v2 terminal/active/mixed-v3 compatibility tests remain green;
+- current v3 replay remains unchanged;
 - all upstream/eval/domain/storage/orchestrator tests remain green;
-- GitHub CI is green;
-- review has no unresolved trust-critical findings.
+- GitHub CI and review are green.
 
 ### Non-goals
 
-- No general multi-version migration framework beyond v2→v3 compatibility required by existing history.
-- No distributed locking/leader election.
+- No new domain write schema.
+- No general migration framework beyond current v2→v3 support.
 - No provider SDK.
 - No context compiler.
 - No sandbox.
@@ -61,7 +54,7 @@ Close all delayed trust/reliability findings from merged PR #17 before declaring
 
 ### Exit
 
-Gate 3e exits when its PR is CI/review-green and merged. Issue #12 then closes and Gate 3 is complete.
+Gate 3f exits when its PR is CI/review-green and merged. Issue #12 then closes and Gate 3 is complete.
 
 Next gate: Gate 4 — scoped/PR audit path and deterministic context compiler.
 <!-- CURRENT_GATE_END -->
