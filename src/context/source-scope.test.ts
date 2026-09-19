@@ -35,6 +35,10 @@ test("source snapshot rejects unsafe paths, duplicates, and forged metadata", ()
     SourceSnapshotError,
   );
   assert.throws(
+    () => createSourceSnapshot([{ path: "a".repeat(5000), content: "x" }]),
+    SourceSnapshotError,
+  );
+  assert.throws(
     () =>
       createSourceSnapshot([
         { path: "src/a.ts", content: "a" },
@@ -81,6 +85,8 @@ test("diff scope selects only changed files intersecting allowed roots", () => {
   });
 
   assert.deepEqual(resolved.selectedPaths, ["src/b.ts"]);
+  assert.equal(resolved.baseRef, "base");
+  assert.equal(resolved.headRef, "head");
   assert.deepEqual(resolved.unavailableChangedPaths, ["src/deleted.ts"]);
   assert.deepEqual(resolved.changedPaths, [
     "src/b.ts",
