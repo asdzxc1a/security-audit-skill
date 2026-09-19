@@ -112,6 +112,16 @@ export function compileWorkerContext(request: ContextCompileRequest): WorkerCont
     throw new ContextCompileError("source_too_large", "selected source exceeds byte limit");
   }
 
+  if (!Array.isArray(request.methodologyRefs)) {
+    throw new ContextCompileError("too_many_methodology_blocks", "methodology refs must be an array");
+  }
+  if (request.methodologyRefs.length > limits.maxMethodologyBlocks) {
+    throw new ContextCompileError(
+      "too_many_methodology_blocks",
+      "methodology block count exceeds limit",
+    );
+  }
+
   const methodologyBlocks = selectMethodologyBlocks(
     request.methodologyCatalog,
     request.methodologyRefs,
