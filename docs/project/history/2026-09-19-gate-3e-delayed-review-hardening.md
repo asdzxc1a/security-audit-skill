@@ -47,9 +47,25 @@ Before memory-only edits, full repository check:
 
 - upstream validators: 65/65 PASS;
 - eval/adapter tests: 13/13 PASS;
-- domain/storage/orchestrator tests: 71/71 PASS;
+- domain/storage/orchestrator tests: 73/73 PASS;
 - strict TypeScript compile: PASS;
 - npm audit: 0 vulnerabilities;
 - diff whitespace check: PASS.
 
 New regression tests cover terminal schema-v2 replay with a historical successful assignment and no file rewrite, active schema-v2 fail-closed terminalization with zero worker calls, mixed v2/v3 restart readability, tampered v2 checksum rejection before upcast, unsupported historical schema rejection, and 260 distinct incomplete reasons summarized without wedging.
+
+
+## Second PR #19 review
+
+Codex review of the Gate 3e compatibility PR found two additional P2 issues:
+
+1. a checksum-valid event stream could downgrade from schema v3 back to v2 after current-schema events had already appeared;
+2. a schema-v2 `assignment_completed` payload could use the v3-only `orchestrator_interrupted` outcome and be accepted after upcast.
+
+Both are fixed at the storage compatibility boundary.
+
+The reader now enforces monotonic domain-schema ordering within a stream: a v2 prefix may transition to v3, but v3→v2 is corruption.
+
+Raw schema-v2 assignment completion outcomes are checked against the exact v2 worker-outcome enum before any v3 receipt fields are synthesized.
+
+Regression tests use checksum-valid fixtures for both cases.
