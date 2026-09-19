@@ -67,6 +67,21 @@ Orchestrator tests must prove:
 - persisted/restarted state is identical to orchestrator-returned state;
 - workers mutate nothing directly; all state effects are owned events through the event store.
 
+### Gate 3b post-merge trust hardening
+
+Covered by `npm run check:domain`.
+
+Regression tests must prove:
+
+- verifier tasks contain the persisted substantive candidate claim and linked coverage IDs;
+- evidence-free covered output becomes malformed and the reducer independently rejects evidence-free coverage;
+- oversized observations become bounded failures without corrupting restart/replay;
+- oversized event envelopes are rejected before durable publication;
+- duplicate fingerprints across coverage units consolidate into one canonical candidate;
+- canonical coverage persists reviewed paths/checks;
+- candidate claims and coverage evidence survive restart/projection;
+- runtime unknown event types fail closed.
+
 ### Full repository
 `npm run check`
 
