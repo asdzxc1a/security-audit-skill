@@ -355,6 +355,10 @@ A nonterminal schema-v2 run containing legacy assignments is readable, but `resu
 
 New writes remain current-schema only.
 
+Domain-schema versions inside one stream must be monotonic. A legacy v2 prefix may be followed by v3 events, but once a v3 event appears, any later v2 event is storage corruption.
+
+Before upcast, raw v2 payloads must satisfy version-specific v2 semantics that differ from v3, including the exact v2 worker-outcome enum. Upcast may add missing v3 representation fields; it may not legitimize data that the v2 contract itself would have rejected.
+
 ### Consequences
 
 - historical schema-v2 event stores remain readable after the v3 upgrade;
