@@ -49,6 +49,8 @@ export type AuditScope = PathAuditScope | DiffAuditScope | RepositoryAuditScope;
 export interface ResolvedAuditScope {
   readonly mode: AuditScope["mode"];
   readonly roots: readonly string[];
+  readonly baseRef: string | null;
+  readonly headRef: string | null;
   readonly changedPaths: readonly string[];
   readonly selectedPaths: readonly string[];
   readonly excludedPaths: readonly string[];
