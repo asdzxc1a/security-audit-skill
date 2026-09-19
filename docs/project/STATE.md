@@ -16,8 +16,8 @@ Updated: 2026-09-19
 - Gate: 0 — Durable GitHub project memory and upstream baseline
 - Active issue: #1
 - Branch: gate-0/project-memory
-- PR: not opened yet
-- Status: in progress
+- PR: #2
+- Status: ready for review; local evidence green; GitHub CI pending
 
 ## Blockers
 
@@ -29,8 +29,12 @@ None known for Gate 0.
 - GitHub Issues are enabled so active work can be durable project memory.
 - Gate #1 records scope and acceptance.
 
-The memory checker and full upstream validator suite still need to run on this branch before Gate 0 can be accepted.
+- npm run check:memory: PASS.
+- Existing upstream validator suites: 65/65 PASS, 0 failures, 0 skipped.
+- Focused PR #2 is open and records the Gate 0 evidence.
+
+GitHub CI for the final branch state is still required before Gate 0 can be accepted.
 
 ## Next action
 
-Complete Gate 0 files and automated checks, run the required evidence, then open the focused Gate 0 PR with the evidence and next gate handoff.
+Confirm GitHub CI is green on PR #2, then review/merge Gate 0 and open Gate 1 for the pinned baseline/evaluation harness.
