@@ -10,54 +10,57 @@ Updated: 2026-09-19
 - Gate 0 memory foundation is complete.
 - Gate 1 closed `incomplete_external_environment` with deterministic eval/host evidence and no model-quality baseline claim.
 - Gate 2 provider-neutral contracts/reducer and Gate 2b durable event persistence are complete.
-- Gate 3a straight-through Recon → Hunt → candidate Validate orchestration merged as 5765eedfecffcce84b77794876186bc097106e15.
+- Gate 3a straight-through orchestration merged as 5765eedfecffcce84b77794876186bc097106e15.
 - Gate 3b evidence-bearing/bounded orchestration hardening merged as 8f3dee2cd3a71fe7db52081a3194a5c3885f2d63.
-- Gate 3c now adds bounded coverage critics, critic-discovered missing units, fresh reassignment waves, final record verification, reporting, and complete/incomplete terminalization on top of schema v2.
+- Gate 3c bounded coverage critics/final verification/reporting merged as 016139cefd603efa48551fa051f41df028411734.
+- Gate 3d now makes the full `runToTerminal` path restart-safe through durable task/result receipts and a phase-driven resume engine.
 - Worker/provider output is untrusted observation; only orchestrator-generated owned events may mutate canonical audit truth.
 - Upstream Cloudflare audit methodology remains intentionally unchanged.
 
 ## Current gate
 
-- Gate: 3c — Coverage critics, final verification, reporting, and terminalization
+- Gate: 3d — Resumable orchestration checkpoints
 - Active issue: #12
-- Branch: gate-3/critic-finalization-v2
+- Branch: gate-3/resumable-orchestration
 - PR: not opened yet
 - Status: implementation and local evidence green; ready for focused PR
 
 ## Blockers
 
-None known for Gate 3c.
+None known for Gate 3d.
 
-Gate 3 is intentionally not complete after this slice: crash/restart resumability still requires durable normalized worker-result receipts/checkpoints.
+Real provider adapters, context compilation, target-execution sandboxing, and MCP/UI remain later gates.
 
 ## Verified evidence
 
-Full repository check on the Gate 3c worktree:
+Full repository check on Gate 3d worktree:
 
 - memory invariants: PASS
 - upstream Cloudflare validators: 65/65 PASS
 - Gate 1 eval/adapter tests: 13/13 PASS
 - strict TypeScript compile: PASS
-- domain/storage/orchestrator tests: 55/55 PASS
+- domain/storage/orchestrator tests: 66/66 PASS
+- npm audit: 0 vulnerabilities
 - diff whitespace check: PASS
 
-Gate 3c evidence includes:
+Restart/checkpoint evidence includes:
 
-- standard/deep can run a post-wave critic, add missing coverage, reopen covered work, use fresh hunters, then require a different final-clean critic;
-- quick profile runs one critic and converts requested additional work into explicit deferred coverage/incomplete state;
-- a final-clean critic that still finds new/reopened work forces incomplete state;
-- critic output carries an explicit self-consistent `stop` decision;
-- critic tasks receive canonical coverage evidence, not opaque IDs alone;
-- repeated fingerprints consolidate only when substantive claims match; conflicting claims block coverage instead of merging;
-- retained confirmed/needs-validation records require fresh final verification;
-- record-verifier tasks receive the candidate claim, linked coverage IDs, and open needs-validation handoff requirements;
-- final-verifier `needs_revision` never silently mutates canonical findings;
-- rejected candidates skip final verification;
-- partial audits can still final-verify useful records before ending incomplete;
-- blocked/deferred coverage cannot produce `run_completed`.
+- domain schema v3 persists a bounded versioned task receipt at assignment creation;
+- successful assignment completion atomically persists a bounded normalized result receipt; failed/cancelled/interrupted assignments must carry no result receipt;
+- full `runToTerminal` and `resumeToTerminal` use the same phase-driven workflow;
+- completed hunter, critic, candidate-verifier, and final-verifier receipts resume without re-calling those completed workers;
+- a durably planned assignment resumes from its original stored task;
+- an ambiguous in-progress assignment becomes `orchestrator_interrupted` and retries with a fresh worker;
+- interrupted critic retries preserve the exact original critic round from the task receipt;
+- active incomplete reasons are durable canonical state and prevent `run_completed` at the reducer boundary;
+- a crash after critic failure completion but before reason recording reconstructs the reason on resume;
+- task/result receipts are bounded and versioned; durable result receipts are re-validated through the task-specific parser on resume;
+- task receipts are checked against run/source/profile and assignment candidate/coverage identity before restart execution;
+- event-store restart/projection preserves task and result receipts;
+- terminal incomplete summaries are deterministically byte-bounded.
 
-Decision D-010 records bounded critic/final-verifier authority.
+Decision D-011 records assignment checkpoints and resumable orchestration as canonical hosted behavior.
 
 ## Next action
 
-Open/review/merge the Gate 3c PR with GitHub CI and review green. Then keep issue #12 active for Gate 3d: durable normalized worker-result receipts + resumable orchestration after process restart, before moving to Gate 4.
+Open/review/merge the Gate 3d PR with GitHub CI and review green. Then close issue #12 and advance to Gate 4: scoped/PR audit path and deterministic context compiler.
