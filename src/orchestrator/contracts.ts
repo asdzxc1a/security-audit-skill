@@ -1,6 +1,8 @@
 import type {
   AdapterRef,
   AuditProfile,
+  CandidateVerdict,
+  CoverageStatus,
   EvidenceRequirementKind,
   WorkerOutcome,
   WorkerOutcomeKind,
@@ -44,10 +46,26 @@ export interface CandidateVerifierWorkerTask extends WorkerTaskBase<"candidate_v
   readonly fingerprint: string;
 }
 
+export interface CoverageCriticWorkerTask extends WorkerTaskBase<"coverage_critic"> {
+  readonly round: "post_wave" | "final_clean";
+  readonly coverage: readonly {
+    readonly coverageId: string;
+    readonly status: CoverageStatus;
+  }[];
+}
+
+export interface RecordVerifierWorkerTask extends WorkerTaskBase<"record_verifier"> {
+  readonly candidateId: string;
+  readonly fingerprint: string;
+  readonly verdict: Exclude<CandidateVerdict, "unvalidated" | "rejected">;
+}
+
 export type WorkerTask =
   | ReconWorkerTask
   | HunterWorkerTask
-  | CandidateVerifierWorkerTask;
+  | CandidateVerifierWorkerTask
+  | CoverageCriticWorkerTask
+  | RecordVerifierWorkerTask;
 
 export interface WorkerAdapter {
   readonly ref: AdapterRef;
@@ -86,10 +104,23 @@ export interface CandidateValidationResult {
   readonly evidenceRequirements: readonly CandidateEvidenceNeed[];
 }
 
+export interface CoverageCriticResult {
+  readonly kind: "coverage_critic_result";
+  readonly reassignCoverageIds: readonly string[];
+}
+
+export interface RecordVerificationResult {
+  readonly kind: "record_verification_result";
+  readonly verdict: "verified" | "needs_revision";
+  readonly reason: string | null;
+}
+
 export type WorkerResult =
   | ReconWorkerResult
   | HunterWorkerResult
-  | CandidateValidationResult;
+  | CandidateValidationResult
+  | CoverageCriticResult
+  | RecordVerificationResult;
 
 export type FailureWorkerOutcomeKind = Exclude<WorkerOutcomeKind, "valid_result">;
 
