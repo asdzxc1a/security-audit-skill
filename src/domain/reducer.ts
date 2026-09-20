@@ -655,3 +655,12 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
     }
   }
 }
+
+
+export function replayAuditEvents(events: readonly AuditEvent[]): AuditRunState | null {
+  let state: AuditRunState | null = null;
+  for (const event of events) {
+    state = reduceAuditState(state, event);
+  }
+  return state;
+}
