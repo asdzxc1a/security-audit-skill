@@ -160,6 +160,19 @@ Tests/checks must prove:
 - durable Decision IDs are unique;
 - durable Lesson IDs are unique.
 
+### Gate 3f historical schema semantic validation
+
+Covered by `npm run check:domain`.
+
+Tests must prove:
+
+- a checksum-valid v3→v2 raw schema downgrade fails closed;
+- schema-v2 events are checked against version-specific semantics before upcast;
+- schema-v2 rejects the v3-only `orchestrator_interrupted` worker outcome;
+- schema-v2 rejects current-only event types from an explicit frozen v2 allowlist;
+- supported v2-prefix→v3-suffix streams remain readable;
+- Gate 3e historical checksum/upcast and current v3 tests remain green.
+
 ### Gate 4a deterministic context compiler
 
 Covered by `npm run check:domain`.

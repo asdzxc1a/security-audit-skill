@@ -8,7 +8,7 @@ Updated: 2026-09-19
 - Upstream: cloudflare/security-audit-skill
 - Pinned methodology baseline: c1c8a8c1471069fb0e188eeaff69b8e8db6564a8
 - Gates 0, 1, 2, 2b, and all Gate 3 slices are complete.
-- Gate 3e schema-compatibility/review hardening merged as d9346e6efbf8e13ed9b2ab0afc62018a2dbe00b6.
+- Gate 3 final historical-schema hardening merged as cde946a63e89b1e6ead91c9eb52cda54542282be; raw schema versions are monotonic and legacy-v2 semantics are validated before upcast.
 - Gate 4a now implements provider-neutral immutable source snapshots, explicit scoped/diff/repository selection, Cloudflare-compatible methodology block selection, and deterministic bounded context bundles.
 - Current code preserves the Cloudflare audit methodology; hosted source/context/orchestration behavior is owned separately.
 - Worker/provider output is untrusted observation; accepted owned events and reducer replay remain canonical audit truth.

@@ -8,7 +8,7 @@ The CURRENT_GATE block is the only implementation gate authorized by this roadma
 - Gate 1 — Pinned eval harness + host-readiness measurement.
 - Gate 2 — Provider-neutral contracts + deterministic fail-closed reducer.
 - Gate 2b — Durable accepted-event store + replay projections.
-- Gate 3 — Hosted provider-neutral audit lifecycle, evidence-bearing verification, critics/finalization, resumable checkpoints, and schema-v2 compatibility. Final hardening merged as d9346e6efbf8e13ed9b2ab0afc62018a2dbe00b6.
+- Gate 3 — Hosted provider-neutral audit lifecycle, evidence-bearing verification, critics/finalization, resumable checkpoints, and historical schema compatibility. Final hardening merged as cde946a63e89b1e6ead91c9eb52cda54542282be.
 
 <!-- CURRENT_GATE_START -->
 ## Gate 4a — Deterministic context compiler foundation

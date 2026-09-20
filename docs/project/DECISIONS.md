@@ -344,6 +344,7 @@ The file event store remains a version-aware compatibility boundary.
 For schema-v2 stored events:
 
 - validate the checksum against the original schema-v2 event before upcast;
+- validate version-specific schema-v2 semantics before adding current-schema fields, including the schema-v2 worker-outcome enum;
 - preserve the original on-disk envelope and checksum chain unchanged;
 - deterministically upcast only the in-memory replay representation to the current domain schema;
 - synthesize explicitly marked non-resumable legacy receipt envelopes only so current reducer replay can reconstruct historical state;
@@ -352,6 +353,8 @@ For schema-v2 stored events:
 Terminal schema-v2 histories remain readable as terminal history.
 
 A nonterminal schema-v2 run containing legacy assignments is readable, but `resumeToTerminal` must fail closed by recording a durable incomplete reason and terminalizing the run as `incomplete` without invoking a worker. Current-schema events may then extend the original checksum chain.
+
+Within one event stream, raw domain schema versions must be monotonic: a supported legacy v2 prefix may transition to current v3 events, but a later v2 event after any v3 event is corruption and fails closed.
 
 New writes remain current-schema only.
 
