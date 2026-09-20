@@ -384,6 +384,83 @@ test("unsupported historical domain schema version remains fail-closed", () => {
   }
 });
 
+
+
+test("event stream rejects a domain schema downgrade from v3 back to v2", () => {
+  const root = tempRoot();
+  const runId = "schema-downgrade";
+  try {
+    writeLegacyV2Store(root, runId, [
+      {
+        schemaVersion: DOMAIN_SCHEMA_VERSION,
+        eventId: "current-event-1",
+        runId,
+        sequence: 1,
+        type: "run_created",
+        sourceSnapshotId: "snapshot-current",
+        profile: "quick",
+        scopePaths: ["src"],
+        maxWorkerInvocations: 0,
+      },
+      legacyV2Event(runId, 2, {
+        type: "phase_advanced",
+        to: "reconnaissance",
+      }),
+    ]);
+
+    const store = new FileAuditEventStore(root);
+    expectStoreCode(() => store.loadState(runId), "corrupt_store");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("schema-v2 assignment outcome rejects v3-only orchestrator_interrupted", () => {
+  const root = tempRoot();
+  const runId = "legacy-invalid-outcome";
+  try {
+    writeLegacyV2Store(root, runId, [
+      legacyV2Event(runId, 1, {
+        type: "run_created",
+        sourceSnapshotId: "snapshot-v2",
+        profile: "quick",
+        scopePaths: ["src"],
+        maxWorkerInvocations: 1,
+      }),
+      legacyV2Event(runId, 2, {
+        type: "phase_advanced",
+        to: "reconnaissance",
+      }),
+      legacyV2Event(runId, 3, {
+        type: "assignment_created",
+        assignmentId: "legacy-recon",
+        kind: "recon",
+        workerId: "legacy-worker",
+        coverageIds: [],
+        candidateId: null,
+      }),
+      legacyV2Event(runId, 4, {
+        type: "assignment_started",
+        assignmentId: "legacy-recon",
+      }),
+      legacyV2Event(runId, 5, {
+        type: "assignment_completed",
+        assignmentId: "legacy-recon",
+        outcome: {
+          kind: "orchestrator_interrupted",
+          detail: "v3-only outcome",
+          adapter: null,
+        },
+      }),
+    ]);
+
+    const store = new FileAuditEventStore(root);
+    expectStoreCode(() => store.loadState(runId), "corrupt_store");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("accepted event stream survives restart and replays to identical canonical state", () => {
   const root = tempRoot();
   try {
