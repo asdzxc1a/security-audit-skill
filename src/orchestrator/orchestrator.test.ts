@@ -1224,6 +1224,7 @@ test("active schema-v2 run is readable but fail-closes incomplete instead of gue
   }
 });
 
+
 test("resume consumes completed hunter receipt without invoking hunter twice", async () => {
   const { root, store } = tempStore();
   try {

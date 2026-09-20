@@ -273,15 +273,29 @@ test("schema-v2 terminal history remains readable without rewriting historical b
         sourceSnapshotId: "snapshot-v2",
         profile: "quick",
         scopePaths: ["src"],
-        maxWorkerInvocations: 0,
+        maxWorkerInvocations: 1,
       }),
       legacyV2Event(runId, 2, { type: "phase_advanced", to: "reconnaissance" }),
-      legacyV2Event(runId, 3, { type: "phase_advanced", to: "coverage_planning" }),
-      legacyV2Event(runId, 4, { type: "phase_advanced", to: "hunting" }),
-      legacyV2Event(runId, 5, { type: "phase_advanced", to: "candidate_validation" }),
-      legacyV2Event(runId, 6, { type: "phase_advanced", to: "record_verification" }),
-      legacyV2Event(runId, 7, { type: "phase_advanced", to: "reporting" }),
-      legacyV2Event(runId, 8, { type: "run_completed" }),
+      legacyV2Event(runId, 3, {
+        type: "assignment_created",
+        assignmentId: "legacy-recon",
+        kind: "recon",
+        workerId: "legacy-worker",
+        coverageIds: [],
+        candidateId: null,
+      }),
+      legacyV2Event(runId, 4, { type: "assignment_started", assignmentId: "legacy-recon" }),
+      legacyV2Event(runId, 5, {
+        type: "assignment_completed",
+        assignmentId: "legacy-recon",
+        outcome: { kind: "valid_result", detail: null, adapter: null },
+      }),
+      legacyV2Event(runId, 6, { type: "phase_advanced", to: "coverage_planning" }),
+      legacyV2Event(runId, 7, { type: "phase_advanced", to: "hunting" }),
+      legacyV2Event(runId, 8, { type: "phase_advanced", to: "candidate_validation" }),
+      legacyV2Event(runId, 9, { type: "phase_advanced", to: "record_verification" }),
+      legacyV2Event(runId, 10, { type: "phase_advanced", to: "reporting" }),
+      legacyV2Event(runId, 11, { type: "run_completed" }),
     ];
     const runDirectory = writeLegacyV2Store(root, runId, events);
     const firstFile = eventFile(runDirectory, 1);
@@ -292,6 +306,18 @@ test("schema-v2 terminal history remains readable without rewriting historical b
     assert.equal(state?.schemaVersion, DOMAIN_SCHEMA_VERSION);
     assert.equal(state?.status, "complete");
     assert.deepEqual(state?.incompleteReasons, []);
+    assert.deepEqual(state?.assignments["legacy-recon"]?.taskReceipt, {
+      schemaVersion: DOMAIN_SCHEMA_VERSION,
+      legacyDomainSchemaVersion: 2,
+      resumable: false,
+      task: { kind: "legacy_task_unavailable" },
+    });
+    assert.deepEqual(state?.assignments["legacy-recon"]?.resultReceipt, {
+      schemaVersion: DOMAIN_SCHEMA_VERSION,
+      legacyDomainSchemaVersion: 2,
+      resumable: false,
+      result: { kind: "legacy_result_unavailable" },
+    });
     assert(store.readEvents(runId).every((event) => event.schemaVersion === DOMAIN_SCHEMA_VERSION));
 
     const rawHistoricalEvent = JSON.parse(fs.readFileSync(firstFile, "utf8")) as {
@@ -299,6 +325,60 @@ test("schema-v2 terminal history remains readable without rewriting historical b
     };
     assert.equal(rawHistoricalEvent.event.schemaVersion, 2);
     assert.equal(fs.readFileSync(firstFile, "utf8"), before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+
+test("schema-v2 checksum tampering fails before in-memory upcast", () => {
+  const root = tempRoot();
+  const runId = "legacy-tampered";
+  try {
+    const runDirectory = writeLegacyV2Store(root, runId, [
+      legacyV2Event(runId, 1, {
+        type: "run_created",
+        sourceSnapshotId: "snapshot-v2",
+        profile: "quick",
+        scopePaths: ["src"],
+        maxWorkerInvocations: 0,
+      }),
+    ]);
+    const file = eventFile(runDirectory, 1);
+    const envelope = JSON.parse(fs.readFileSync(file, "utf8")) as {
+      event: { sourceSnapshotId: string };
+    };
+    envelope.event.sourceSnapshotId = "tampered";
+    fs.writeFileSync(file, JSON.stringify(envelope, null, 2) + "\n");
+
+    const store = new FileAuditEventStore(root);
+    expectStoreCode(() => store.loadState(runId), "corrupt_store");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("unsupported historical domain schema version remains fail-closed", () => {
+  const root = tempRoot();
+  const runId = "legacy-unsupported";
+  try {
+    writeLegacyV2Store(root, runId, [
+      {
+        schemaVersion: 99,
+        eventId: "future-event-1",
+        runId,
+        sequence: 1,
+        type: "run_created",
+        sourceSnapshotId: "snapshot-future",
+        profile: "quick",
+        scopePaths: ["src"],
+        maxWorkerInvocations: 0,
+      },
+    ]);
+
+    const store = new FileAuditEventStore(root);
+    expectStoreCode(() => store.loadState(runId), "corrupt_store");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
