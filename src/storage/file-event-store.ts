@@ -49,6 +49,17 @@ const LEGACY_V2_EVENT_TYPES = new Set(
   [...KNOWN_EVENT_TYPES].filter((type) => type !== "run_incomplete_reason_recorded"),
 );
 
+const LEGACY_V2_WORKER_OUTCOME_KINDS = new Set([
+  "valid_result",
+  "malformed_result",
+  "model_refusal",
+  "provider_error",
+  "timeout",
+  "permission_denied",
+  "sandbox_failure",
+  "cancelled",
+]);
+
 const LEGACY_V2_TASK_RECEIPT = {
   schemaVersion: DOMAIN_SCHEMA_VERSION,
   legacyDomainSchemaVersion: LEGACY_DOMAIN_SCHEMA_VERSION,
@@ -71,6 +82,9 @@ interface StoredEventEnvelope {
   readonly storeVersion: typeof EVENT_STORE_SCHEMA_VERSION;
   readonly previousChecksum: string | null;
   readonly checksum: string;
+  readonly rawDomainSchemaVersion:
+    | typeof LEGACY_DOMAIN_SCHEMA_VERSION
+    | typeof DOMAIN_SCHEMA_VERSION;
   readonly event: AuditEvent;
 }
 
@@ -170,7 +184,11 @@ function upcastLegacyV2Event(value: Record<string, unknown>, file: string): Audi
 
   if (event.type === "assignment_completed") {
     const outcome = event.outcome;
-    if (!isObject(outcome) || typeof outcome.kind !== "string") {
+    if (
+      !isObject(outcome) ||
+      typeof outcome.kind !== "string" ||
+      !LEGACY_V2_WORKER_OUTCOME_KINDS.has(outcome.kind)
+    ) {
       fail("corrupt_store", "invalid legacy-v2 assignment outcome in " + file);
     }
     event.resultReceipt =
@@ -280,7 +298,12 @@ function parseEnvelope(value: unknown, file: string): StoredEventEnvelope {
   }
 
   let event: AuditEvent;
+  let rawDomainSchemaVersion:
+    | typeof LEGACY_DOMAIN_SCHEMA_VERSION
+    | typeof DOMAIN_SCHEMA_VERSION;
+
   if (rawEvent.schemaVersion === DOMAIN_SCHEMA_VERSION) {
+    rawDomainSchemaVersion = DOMAIN_SCHEMA_VERSION;
     if (
       typeof rawEvent.eventId !== "string" ||
       typeof rawEvent.runId !== "string" ||
@@ -292,6 +315,7 @@ function parseEnvelope(value: unknown, file: string): StoredEventEnvelope {
     }
     event = rawEvent as unknown as AuditEvent;
   } else if (rawEvent.schemaVersion === LEGACY_DOMAIN_SCHEMA_VERSION) {
+    rawDomainSchemaVersion = LEGACY_DOMAIN_SCHEMA_VERSION;
     event = upcastLegacyV2Event(rawEvent, file);
   } else {
     fail("corrupt_store", "unsupported domain event schema version in " + file);
@@ -301,6 +325,7 @@ function parseEnvelope(value: unknown, file: string): StoredEventEnvelope {
     storeVersion: EVENT_STORE_SCHEMA_VERSION,
     previousChecksum: value.previousChecksum,
     checksum: value.checksum,
+    rawDomainSchemaVersion,
     event,
   };
 }
@@ -364,6 +389,7 @@ export class FileAuditEventStore implements AuditEventStore {
       storeVersion: EVENT_STORE_SCHEMA_VERSION,
       previousChecksum: stream.latestChecksum,
       checksum,
+      rawDomainSchemaVersion: DOMAIN_SCHEMA_VERSION,
       event,
     };
 
@@ -521,6 +547,7 @@ export class FileAuditEventStore implements AuditEventStore {
     const events: AuditEvent[] = [];
     const eventIds = new Set<string>();
     let previousChecksum: string | null = null;
+    let previousRawDomainSchemaVersion: number | null = null;
 
     for (let index = 0; index < eventFiles.length; index++) {
       const name = eventFiles[index];
@@ -534,6 +561,17 @@ export class FileAuditEventStore implements AuditEventStore {
 
       const file = path.join(paths.events, name);
       const envelope = parseEnvelope(parseJsonFile(file), file);
+      if (
+        previousRawDomainSchemaVersion !== null &&
+        envelope.rawDomainSchemaVersion < previousRawDomainSchemaVersion
+      ) {
+        fail(
+          "corrupt_store",
+          "domain event schema version downgrade in " + name,
+        );
+      }
+      previousRawDomainSchemaVersion = envelope.rawDomainSchemaVersion;
+
       if (envelope.event.runId !== runId) fail("corrupt_store", "event runId mismatch in " + name);
       if (envelope.event.sequence !== expectedSequence) {
         fail("corrupt_store", "event payload sequence mismatch in " + name);
