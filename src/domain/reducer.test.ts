@@ -638,6 +638,8 @@ test("coverage critic can reopen covered work only with an independent successfu
     assignmentId: "hunt-1",
     resolution: "covered",
     candidateIds: [],
+    reviewedPaths: REVIEWED_PATHS,
+    checks: COVERAGE_CHECKS,
     unresolved: [],
   });
   scenario.apply({
@@ -659,6 +661,46 @@ test("coverage critic can reopen covered work only with an independent successfu
   });
   assert.equal(reopened.coverageUnits["coverage-1"].status, "planned");
   assert.equal(reopened.coverageUnits["coverage-1"].assignmentId, null);
+  assert.deepEqual(reopened.coverageUnits["coverage-1"].reviewedPaths, []);
+  assert.deepEqual(reopened.coverageUnits["coverage-1"].checks, []);
+});
+
+
+
+test("successful coverage critic can add a new planned coverage unit", () => {
+  const scenario = new Scenario();
+  advanceToHunting(scenario);
+  scenario.apply({
+    type: "assignment_created",
+    assignmentId: "critic-1",
+    kind: "coverage_critic",
+    workerId: "critic-a",
+    coverageIds: [],
+    candidateId: null,
+  });
+  scenario.apply({ type: "assignment_started", assignmentId: "critic-1" });
+  scenario.apply({ type: "assignment_completed", assignmentId: "critic-1", outcome: VALID });
+
+  const state = scenario.apply({
+    type: "coverage_unit_added_by_critic",
+    coverageId: "coverage-2",
+    criticAssignmentId: "critic-1",
+    reason: "critic found an unmapped trust boundary",
+  });
+  assert.equal(state.coverageUnits["coverage-2"].status, "planned");
+  assert.deepEqual(state.coverageUnits["coverage-2"].reviewedPaths, []);
+  assert.deepEqual(state.coverageUnits["coverage-2"].checks, []);
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "coverage_unit_added_by_critic",
+        coverageId: "coverage-1",
+        criticAssignmentId: "critic-1",
+        reason: "duplicate",
+      }),
+    "invalid_coverage",
+  );
 });
 
 test("coverage critic assignments require fresh workers", () => {

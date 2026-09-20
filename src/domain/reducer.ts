@@ -722,6 +722,32 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       return next;
     }
 
+    case "coverage_unit_added_by_critic": {
+      if (state.status !== "hunting") {
+        fail("invalid_phase", "critic coverage units add during hunting");
+      }
+      requireId(event.coverageId, "coverageId");
+      requireText(event.reason, "reason");
+      if (state.coverageUnits[event.coverageId]) {
+        fail("invalid_coverage", "critic cannot add duplicate coverage unit");
+      }
+      const critic = assignmentOrFail(state, event.criticAssignmentId);
+      requireSucceededValidAssignment(critic);
+      if (critic.kind !== "coverage_critic") {
+        fail("invalid_assignment", "coverage addition requires a successful coverage critic");
+      }
+      next.coverageUnits[event.coverageId] = {
+        coverageId: event.coverageId,
+        status: "planned",
+        assignmentId: null,
+        candidateIds: [],
+        reviewedPaths: [],
+        checks: [],
+        unresolved: [],
+      };
+      return next;
+    }
+
     case "coverage_reopened": {
       if (state.status !== "hunting") fail("invalid_phase", "coverage reopens during hunting");
       requireText(event.reason, "reason");
@@ -746,6 +772,8 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
         status: "planned",
         assignmentId: null,
         candidateIds: [],
+        reviewedPaths: [],
+        checks: [],
         unresolved: [],
       };
       return next;

@@ -68,6 +68,11 @@ export interface RecordVerifierWorkerTask extends WorkerTaskBase<"record_verifie
   readonly verdict: Exclude<CandidateVerdict, "unvalidated" | "rejected">;
   readonly coverageIds: readonly string[];
   readonly claim: CandidateClaim;
+  readonly openEvidenceRequirements: readonly {
+    readonly requirementId: string;
+    readonly kind: EvidenceRequirementKind;
+    readonly description: string;
+  }[];
 }
 
 export type WorkerTask =
@@ -126,6 +131,8 @@ export interface CandidateValidationResult {
 
 export interface CoverageCriticResult {
   readonly kind: "coverage_critic_result";
+  readonly stop: boolean;
+  readonly newCoverageIds: readonly string[];
   readonly reassignCoverageIds: readonly string[];
 }
 

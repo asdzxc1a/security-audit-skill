@@ -58,6 +58,10 @@ interface AssignmentExecution {
 
 const TERMINAL = new Set(["complete", "incomplete", "cancelled", "failed"]);
 
+function sameCandidateClaim(left: Candidate["claim"], right: Candidate["claim"]): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 export class AuditOrchestrator {
   constructor(
     private readonly store: AuditEventStore,
@@ -297,30 +301,30 @@ export class AuditOrchestrator {
     } else {
       const result = firstCritic.observation.result as CoverageCriticResult;
       if (request.profile === "quick") {
-        if (result.reassignCoverageIds.length > 0) {
-          this.deferCriticReassignments(
+        if (result.newCoverageIds.length > 0 || result.reassignCoverageIds.length > 0) {
+          this.deferCriticWork(
             request.runId,
             firstCritic.assignmentId,
+            result.newCoverageIds,
             result.reassignCoverageIds,
-            "quick profile deferred critic-requested reassignment",
+            "quick profile deferred critic-requested work",
           );
-          incompleteReasons.push("quick profile deferred critic-requested reassignment");
+          incompleteReasons.push("quick profile deferred critic-requested work");
         }
       } else {
-        for (const coverageId of result.reassignCoverageIds) {
-          this.append(request.runId, {
-            type: "coverage_reopened",
-            coverageId,
-            criticAssignmentId: firstCritic.assignmentId,
-            reason: "post-wave critic requested independent reassignment",
-          });
-        }
+        this.openCriticWork(
+          request.runId,
+          firstCritic.assignmentId,
+          result.newCoverageIds,
+          result.reassignCoverageIds,
+          "post-wave critic requested additional work",
+        );
 
-        for (const coverageId of result.reassignCoverageIds) {
+        for (const coverageId of [...result.newCoverageIds, ...result.reassignCoverageIds].sort()) {
           const outcome = await this.huntCoverage(request.runId, coverageId);
           if (outcome === "terminal") return this.current(request.runId);
           if (outcome === "incomplete") {
-            incompleteReasons.push("reassigned coverage " + coverageId + " remained unresolved");
+            incompleteReasons.push("critic-requested coverage " + coverageId + " remained unresolved");
           }
         }
 
@@ -332,16 +336,18 @@ export class AuditOrchestrator {
           );
         } else {
           const finalResult = finalCritic.observation.result as CoverageCriticResult;
-          if (finalResult.reassignCoverageIds.length > 0) {
-            this.deferCriticReassignments(
+          if (
+            finalResult.newCoverageIds.length > 0 ||
+            finalResult.reassignCoverageIds.length > 0
+          ) {
+            this.deferCriticWork(
               request.runId,
               finalCritic.assignmentId,
+              finalResult.newCoverageIds,
               finalResult.reassignCoverageIds,
-              "bounded final-clean critic still requested reassignment",
+              "bounded final-clean critic still requested work",
             );
-            incompleteReasons.push(
-              "bounded final-clean critic still requested reassignment",
-            );
+            incompleteReasons.push("bounded final-clean critic still requested work");
           }
         }
       }
@@ -504,6 +510,8 @@ export class AuditOrchestrator {
         assignmentId: execution.assignmentId,
         resolution: "covered",
         candidateIds: [],
+        reviewedPaths: [...result.reviewedPaths],
+        checks: result.checks.map((check) => ({ ...check })),
         unresolved: [],
       });
       return "resolved";
@@ -516,20 +524,64 @@ export class AuditOrchestrator {
         assignmentId: execution.assignmentId,
         resolution: "blocked",
         candidateIds: [],
+        reviewedPaths: [...result.reviewedPaths],
+        checks: result.checks.map((check) => ({ ...check })),
         unresolved: [...result.unresolved],
       });
       return "incomplete";
     }
 
+    const preflight = this.current(runId);
+    const conflicting = result.candidates.find((draft) => {
+      const existing = Object.values(preflight.candidates).find(
+        (candidate) => candidate.fingerprint === draft.fingerprint,
+      );
+      return existing !== undefined && !sameCandidateClaim(existing.claim, draft.claim);
+    });
+    if (conflicting) {
+      this.append(runId, {
+        type: "coverage_resolved",
+        coverageId,
+        assignmentId: execution.assignmentId,
+        resolution: "blocked",
+        candidateIds: [],
+        reviewedPaths: [...result.reviewedPaths],
+        checks: result.checks.map((check) => ({ ...check })),
+        unresolved: [
+          "fingerprint " + conflicting.fingerprint + " conflicts with an existing candidate claim",
+        ],
+      });
+      return "incomplete";
+    }
+
     const candidateIds: string[] = [];
-    for (const fingerprint of result.candidateFingerprints) {
+    for (const draft of result.candidates) {
+      const current = this.current(runId);
+      const existing = Object.values(current.candidates).find(
+        (candidate) => candidate.fingerprint === draft.fingerprint,
+      );
+
+      if (existing) {
+        if (!existing.coverageIds.includes(coverageId)) {
+          this.append(runId, {
+            type: "candidate_linked_to_coverage",
+            candidateId: existing.candidateId,
+            coverageId,
+            assignmentId: execution.assignmentId,
+          });
+        }
+        candidateIds.push(existing.candidateId);
+        continue;
+      }
+
       const candidateId = this.ids.next("candidate");
       this.append(runId, {
         type: "candidate_registered",
         candidateId,
-        fingerprint,
+        fingerprint: draft.fingerprint,
         coverageId,
         originAssignmentId: execution.assignmentId,
+        claim: structuredClone(draft.claim),
       });
       candidateIds.push(candidateId);
     }
@@ -539,24 +591,53 @@ export class AuditOrchestrator {
       assignmentId: execution.assignmentId,
       resolution: "candidate",
       candidateIds,
+      reviewedPaths: [...result.reviewedPaths],
+      checks: result.checks.map((check) => ({ ...check })),
       unresolved: [],
     });
     return "resolved";
   }
 
-  private deferCriticReassignments(
+  private openCriticWork(
     runId: string,
     criticAssignmentId: string,
-    coverageIds: readonly string[],
+    newCoverageIds: readonly string[],
+    reassignCoverageIds: readonly string[],
     reason: string,
   ): void {
-    for (const coverageId of coverageIds) {
+    for (const coverageId of [...newCoverageIds].sort()) {
+      this.append(runId, {
+        type: "coverage_unit_added_by_critic",
+        coverageId,
+        criticAssignmentId,
+        reason,
+      });
+    }
+    for (const coverageId of [...reassignCoverageIds].sort()) {
       this.append(runId, {
         type: "coverage_reopened",
         coverageId,
         criticAssignmentId,
         reason,
       });
+    }
+  }
+
+  private deferCriticWork(
+    runId: string,
+    criticAssignmentId: string,
+    newCoverageIds: readonly string[],
+    reassignCoverageIds: readonly string[],
+    reason: string,
+  ): void {
+    this.openCriticWork(
+      runId,
+      criticAssignmentId,
+      newCoverageIds,
+      reassignCoverageIds,
+      reason,
+    );
+    for (const coverageId of [...newCoverageIds, ...reassignCoverageIds].sort()) {
       this.append(runId, {
         type: "coverage_classified",
         coverageId,
@@ -648,7 +729,14 @@ export class AuditOrchestrator {
   ): Promise<AssignmentExecution | null> {
     const state = this.current(runId);
     const coverage = Object.values(state.coverageUnits)
-      .map((unit) => ({ coverageId: unit.coverageId, status: unit.status }))
+      .map((unit) => ({
+        coverageId: unit.coverageId,
+        status: unit.status,
+        candidateIds: [...unit.candidateIds],
+        reviewedPaths: [...unit.reviewedPaths],
+        checks: unit.checks.map((check) => ({ ...check })),
+        unresolved: [...unit.unresolved],
+      }))
       .sort((left, right) => left.coverageId.localeCompare(right.coverageId));
 
     return this.executeAssignment(
@@ -682,6 +770,19 @@ export class AuditOrchestrator {
       );
     }
     const retainedVerdict: "confirmed" | "needs_validation" = candidate.verdict;
+    const openEvidenceRequirements = Object.values(state.evidenceRequirements)
+      .filter(
+        (requirement) =>
+          requirement.candidateId === candidate.candidateId &&
+          requirement.scope === "finding_handoff" &&
+          requirement.status === "open",
+      )
+      .map((requirement) => ({
+        requirementId: requirement.requirementId,
+        kind: requirement.kind,
+        description: requirement.description,
+      }))
+      .sort((left, right) => left.requirementId.localeCompare(right.requirementId));
 
     return this.executeAssignment(
       runId,
@@ -699,6 +800,9 @@ export class AuditOrchestrator {
         candidateId: candidate.candidateId,
         fingerprint: candidate.fingerprint,
         verdict: retainedVerdict,
+        coverageIds: [...candidate.coverageIds],
+        claim: structuredClone(candidate.claim),
+        openEvidenceRequirements,
       }),
     );
   }
