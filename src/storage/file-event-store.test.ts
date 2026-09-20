@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -168,6 +169,140 @@ function expectStoreCode(fn: () => unknown, code: EventStoreError["code"]): void
     (error: unknown) => error instanceof EventStoreError && error.code === code,
   );
 }
+
+
+function legacyCanonicalJson(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return "[" + value.map((entry) => legacyCanonicalJson(entry)).join(",") + "]";
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return (
+      "{" +
+      Object.keys(record)
+        .sort()
+        .map((key) => JSON.stringify(key) + ":" + legacyCanonicalJson(record[key]))
+        .join(",") +
+      "}"
+    );
+  }
+  throw new Error("unsupported legacy fixture value");
+}
+
+function legacyChecksum(value: unknown): string {
+  return crypto
+    .createHash("sha256")
+    .update(legacyCanonicalJson(value), "utf8")
+    .digest("hex");
+}
+
+function writeLegacyV2Store(
+  root: string,
+  runId: string,
+  events: readonly Record<string, unknown>[],
+): string {
+  const runDirectory = path.join(
+    root,
+    crypto.createHash("sha256").update(runId, "utf8").digest("hex"),
+  );
+  const eventsDirectory = path.join(runDirectory, "events");
+  fs.mkdirSync(eventsDirectory, { recursive: true });
+
+  let previousChecksum: string | null = null;
+  for (const event of events) {
+    const checksum = legacyChecksum(event);
+    const sequence = Number(event.sequence);
+    const envelope = {
+      storeVersion: 1,
+      previousChecksum,
+      checksum,
+      event,
+    };
+    fs.writeFileSync(
+      path.join(eventsDirectory, String(sequence).padStart(16, "0") + ".json"),
+      JSON.stringify(envelope, null, 2) + "\n",
+    );
+    previousChecksum = checksum;
+  }
+
+  if (events.length > 0) {
+    fs.writeFileSync(
+      path.join(runDirectory, "HEAD.json"),
+      JSON.stringify(
+        {
+          storeVersion: 1,
+          runId,
+          sequence: events.length,
+          checksum: previousChecksum,
+        },
+        null,
+        2,
+      ) + "\n",
+    );
+  }
+  return runDirectory;
+}
+
+function legacyV2Event(
+  runId: string,
+  sequence: number,
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    schemaVersion: 2,
+    eventId: "legacy-event-" + sequence,
+    runId,
+    sequence,
+    ...payload,
+  };
+}
+
+
+
+test("schema-v2 terminal history remains readable without rewriting historical bytes", () => {
+  const root = tempRoot();
+  const runId = "legacy-complete";
+  try {
+    const events = [
+      legacyV2Event(runId, 1, {
+        type: "run_created",
+        sourceSnapshotId: "snapshot-v2",
+        profile: "quick",
+        scopePaths: ["src"],
+        maxWorkerInvocations: 0,
+      }),
+      legacyV2Event(runId, 2, { type: "phase_advanced", to: "reconnaissance" }),
+      legacyV2Event(runId, 3, { type: "phase_advanced", to: "coverage_planning" }),
+      legacyV2Event(runId, 4, { type: "phase_advanced", to: "hunting" }),
+      legacyV2Event(runId, 5, { type: "phase_advanced", to: "candidate_validation" }),
+      legacyV2Event(runId, 6, { type: "phase_advanced", to: "record_verification" }),
+      legacyV2Event(runId, 7, { type: "phase_advanced", to: "reporting" }),
+      legacyV2Event(runId, 8, { type: "run_completed" }),
+    ];
+    const runDirectory = writeLegacyV2Store(root, runId, events);
+    const firstFile = eventFile(runDirectory, 1);
+    const before = fs.readFileSync(firstFile, "utf8");
+
+    const store = new FileAuditEventStore(root);
+    const state = store.loadState(runId);
+    assert.equal(state?.schemaVersion, DOMAIN_SCHEMA_VERSION);
+    assert.equal(state?.status, "complete");
+    assert.deepEqual(state?.incompleteReasons, []);
+    assert(store.readEvents(runId).every((event) => event.schemaVersion === DOMAIN_SCHEMA_VERSION));
+
+    const rawHistoricalEvent = JSON.parse(fs.readFileSync(firstFile, "utf8")) as {
+      event: { schemaVersion: number };
+    };
+    assert.equal(rawHistoricalEvent.event.schemaVersion, 2);
+    assert.equal(fs.readFileSync(firstFile, "utf8"), before);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("accepted event stream survives restart and replays to identical canonical state", () => {
   const root = tempRoot();

@@ -69,6 +69,8 @@ const MAX_ID_BYTES = 512;
 const MAX_LIST_ITEMS = 256;
 const MAX_SOURCE_REFERENCES = 64;
 const MAX_COVERAGE_CHECKS = 64;
+const MAX_INCOMPLETE_REASONS = 128;
+const INCOMPLETE_REASON_OVERFLOW = "additional incomplete reasons omitted";
 
 function utf8Bytes(value: string): number {
   return Buffer.byteLength(value, "utf8");
@@ -967,11 +969,18 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
 
     case "run_incomplete_reason_recorded": {
       requireText(event.reason, "reason");
-      if (!state.incompleteReasons.includes(event.reason)) {
-        if (state.incompleteReasons.length >= 128) {
-          fail("invalid_event", "too many incomplete reasons");
-        }
+      if (state.incompleteReasons.includes(event.reason)) return next;
+
+      if (state.incompleteReasons.length < MAX_INCOMPLETE_REASONS - 1) {
         next.incompleteReasons = [...state.incompleteReasons, event.reason];
+        return next;
+      }
+
+      if (!state.incompleteReasons.includes(INCOMPLETE_REASON_OVERFLOW)) {
+        next.incompleteReasons = [
+          ...state.incompleteReasons.slice(0, MAX_INCOMPLETE_REASONS - 1),
+          INCOMPLETE_REASON_OVERFLOW,
+        ];
       }
       return next;
     }

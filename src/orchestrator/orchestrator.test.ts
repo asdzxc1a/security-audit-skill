@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -105,6 +106,105 @@ function request(maxWorkerInvocations: number | null = 10): AuditRunRequest {
 function tempStore(): { root: string; store: FileAuditEventStore } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "audit-orchestrator-"));
   return { root, store: new FileAuditEventStore(root) };
+}
+
+
+function legacyCanonicalJson(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (typeof value === "number") return JSON.stringify(value);
+  if (Array.isArray(value)) {
+    return "[" + value.map((entry) => legacyCanonicalJson(entry)).join(",") + "]";
+  }
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return (
+      "{" +
+      Object.keys(record)
+        .sort()
+        .map((key) => JSON.stringify(key) + ":" + legacyCanonicalJson(record[key]))
+        .join(",") +
+      "}"
+    );
+  }
+  throw new Error("unsupported legacy fixture value");
+}
+
+function writeLegacyV2ActiveReconStore(root: string, runId: string): void {
+  const runDirectory = path.join(
+    root,
+    crypto.createHash("sha256").update(runId, "utf8").digest("hex"),
+  );
+  const eventsDirectory = path.join(runDirectory, "events");
+  fs.mkdirSync(eventsDirectory, { recursive: true });
+
+  const events: Record<string, unknown>[] = [
+    {
+      schemaVersion: 2,
+      eventId: "legacy-event-1",
+      runId,
+      sequence: 1,
+      type: "run_created",
+      sourceSnapshotId: "snapshot-v2",
+      profile: "quick",
+      scopePaths: ["src"],
+      maxWorkerInvocations: 1,
+    },
+    {
+      schemaVersion: 2,
+      eventId: "legacy-event-2",
+      runId,
+      sequence: 2,
+      type: "phase_advanced",
+      to: "reconnaissance",
+    },
+    {
+      schemaVersion: 2,
+      eventId: "legacy-event-3",
+      runId,
+      sequence: 3,
+      type: "assignment_created",
+      assignmentId: "legacy-recon",
+      kind: "recon",
+      workerId: "legacy-worker",
+      coverageIds: [],
+      candidateId: null,
+    },
+  ];
+
+  let previousChecksum: string | null = null;
+  for (const event of events) {
+    const checksum = crypto
+      .createHash("sha256")
+      .update(legacyCanonicalJson(event), "utf8")
+      .digest("hex");
+    const envelope = {
+      storeVersion: 1,
+      previousChecksum,
+      checksum,
+      event,
+    };
+    fs.writeFileSync(
+      path.join(eventsDirectory, String(event.sequence).padStart(16, "0") + ".json"),
+      JSON.stringify(envelope, null, 2) + "\n",
+    );
+    previousChecksum = checksum;
+  }
+
+  fs.writeFileSync(
+    path.join(runDirectory, "HEAD.json"),
+    JSON.stringify(
+      {
+        storeVersion: 1,
+        runId,
+        sequence: events.length,
+        checksum: previousChecksum,
+      },
+      null,
+      2,
+    ) + "\n",
+  );
 }
 
 const CLAIM: CandidateClaim = {
@@ -1078,6 +1178,51 @@ test("critic and record-verifier tasks receive canonical evidence-bearing state"
   }
 });
 
+
+
+
+test("active schema-v2 run is readable but fail-closes incomplete instead of guessing checkpoints", async () => {
+  const { root } = tempStore();
+  const runId = "legacy-active";
+  try {
+    writeLegacyV2ActiveReconStore(root, runId);
+    const store = new FileAuditEventStore(root);
+    const before = store.loadState(runId);
+    assert.equal(before?.status, "reconnaissance");
+    const legacyAssignment = before?.assignments["legacy-recon"];
+    assert.deepEqual(legacyAssignment?.taskReceipt, {
+      schemaVersion: 3,
+      legacyDomainSchemaVersion: 2,
+      resumable: false,
+      task: {
+        kind: "legacy_task_unavailable",
+      },
+    });
+
+    const worker = new ScriptedWorker([]);
+    const resumed = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(1000),
+    ).resumeToTerminal(runId);
+
+    assert.equal(worker.tasks.length, 0);
+    assert.equal(resumed.status, "incomplete");
+    assert.match(
+      resumed.terminalReason ?? "",
+      /schema-v2 run lacks durable task\/result checkpoints/,
+    );
+    assert.deepEqual(resumed.incompleteReasons, [
+      "schema-v2 run lacks durable task/result checkpoints required for safe resume",
+    ]);
+
+    const restarted = new FileAuditEventStore(root).loadState(runId);
+    assert.deepEqual(restarted, resumed);
+    assert.equal(new FileAuditEventStore(root).readEvents(runId).length, 5);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("resume consumes completed hunter receipt without invoking hunter twice", async () => {
   const { root, store } = tempStore();
