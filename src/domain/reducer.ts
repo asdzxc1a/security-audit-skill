@@ -187,7 +187,12 @@ function verifyCompletion(state: AuditRunState): void {
     fail("unresolved_work", "run cannot complete with open assignments");
   }
   for (const coverage of Object.values(state.coverageUnits)) {
-    if (coverage.status === "planned" || coverage.status === "in_progress") {
+    if (
+      coverage.status === "planned" ||
+      coverage.status === "in_progress" ||
+      coverage.status === "blocked" ||
+      coverage.status === "deferred"
+    ) {
       fail("unresolved_work", "run cannot complete with unresolved coverage " + coverage.coverageId);
     }
   }
