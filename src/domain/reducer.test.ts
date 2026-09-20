@@ -193,32 +193,19 @@ test("provider error cannot resolve coverage as clean", () => {
   assert.equal(requeued.coverageUnits["coverage-1"].assignmentId, null);
 });
 
-test("hunter cannot validate its own candidate", () => {
+test("hunter cannot be assigned to validate its own candidate", () => {
   const scenario = new Scenario();
   createCandidate(scenario);
-
-  scenario.apply({
-    type: "assignment_created",
-    assignmentId: "candidate-verify-1",
-    kind: "candidate_verifier",
-    workerId: "hunter-a",
-    coverageIds: [],
-    candidateId: "candidate-1",
-  });
-  scenario.apply({ type: "assignment_started", assignmentId: "candidate-verify-1" });
-  scenario.apply({
-    type: "assignment_completed",
-    assignmentId: "candidate-verify-1",
-    outcome: VALID,
-  });
 
   expectCode(
     () =>
       scenario.attempt({
-        type: "candidate_disposition_recorded",
+        type: "assignment_created",
+        assignmentId: "candidate-verify-1",
+        kind: "candidate_verifier",
+        workerId: "hunter-a",
+        coverageIds: [],
         candidateId: "candidate-1",
-        verdict: "confirmed",
-        verifierAssignmentId: "candidate-verify-1",
       }),
     "independence_violation",
   );
@@ -327,33 +314,187 @@ test("unvalidated candidate blocks phase advancement", () => {
   );
 });
 
-test("final verifier must be fresh", () => {
+test("final verifier assignment must use a fresh worker", () => {
   const scenario = new Scenario();
   createCandidate(scenario);
   verifyCandidate(scenario, "confirmed", "verifier-a");
   scenario.apply({ type: "phase_advanced", to: "record_verification" });
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "assignment_created",
+        assignmentId: "record-verify-1",
+        kind: "record_verifier",
+        workerId: "verifier-a",
+        coverageIds: [],
+        candidateId: "candidate-1",
+      }),
+    "independence_violation",
+  );
+});
+
+
+
+test("only hunters may own coverage units", () => {
+  const scenario = new Scenario();
+  advanceToHunting(scenario);
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "assignment_created",
+        assignmentId: "critic-1",
+        kind: "coverage_critic",
+        workerId: "critic-a",
+        coverageIds: ["coverage-1"],
+        candidateId: null,
+      }),
+    "invalid_assignment",
+  );
+});
+
+test("assignment coverage ids must be unique", () => {
+  const scenario = new Scenario();
+  advanceToHunting(scenario);
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "assignment_created",
+        assignmentId: "hunt-1",
+        kind: "hunter",
+        workerId: "hunter-a",
+        coverageIds: ["coverage-1", "coverage-1"],
+        candidateId: null,
+      }),
+    "invalid_assignment",
+  );
+});
+
+test("requeued coverage requires a fresh hunter worker", () => {
+  const scenario = new Scenario();
+  advanceToHunting(scenario);
   scenario.apply({
     type: "assignment_created",
-    assignmentId: "record-verify-1",
-    kind: "record_verifier",
+    assignmentId: "hunt-1",
+    kind: "hunter",
+    workerId: "hunter-a",
+    coverageIds: ["coverage-1"],
+    candidateId: null,
+  });
+  scenario.apply({ type: "assignment_started", assignmentId: "hunt-1" });
+  scenario.apply({
+    type: "assignment_completed",
+    assignmentId: "hunt-1",
+    outcome: { kind: "provider_error", detail: "provider unavailable", adapter: null },
+  });
+  scenario.apply({
+    type: "coverage_requeued",
+    coverageId: "coverage-1",
+    assignmentId: "hunt-1",
+    reason: "provider error",
+  });
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "assignment_created",
+        assignmentId: "hunt-2",
+        kind: "hunter",
+        workerId: "hunter-a",
+        coverageIds: ["coverage-1"],
+        candidateId: null,
+      }),
+    "independence_violation",
+  );
+
+  const state = scenario.apply({
+    type: "assignment_created",
+    assignmentId: "hunt-3",
+    kind: "hunter",
+    workerId: "hunter-b",
+    coverageIds: ["coverage-1"],
+    candidateId: null,
+  });
+  assert.equal(state.assignments["hunt-3"].workerId, "hunter-b");
+});
+
+test("coverage candidate ids must be unique", () => {
+  const scenario = new Scenario();
+  advanceToHunting(scenario);
+  scenario.apply({
+    type: "assignment_created",
+    assignmentId: "hunt-1",
+    kind: "hunter",
+    workerId: "hunter-a",
+    coverageIds: ["coverage-1"],
+    candidateId: null,
+  });
+  scenario.apply({ type: "assignment_started", assignmentId: "hunt-1" });
+  scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID });
+  scenario.apply({
+    type: "candidate_registered",
+    candidateId: "candidate-1",
+    fingerprint: "root-cause-1",
+    coverageId: "coverage-1",
+    originAssignmentId: "hunt-1",
+  });
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "coverage_resolved",
+        coverageId: "coverage-1",
+        assignmentId: "hunt-1",
+        resolution: "candidate",
+        candidateIds: ["candidate-1", "candidate-1"],
+        unresolved: [],
+      }),
+    "invalid_coverage",
+  );
+});
+
+test("needs_validation handoff remains open until an explicit revalidation transition exists", () => {
+  const scenario = new Scenario();
+  createCandidate(scenario);
+  scenario.apply({
+    type: "assignment_created",
+    assignmentId: "candidate-verify-1",
+    kind: "candidate_verifier",
     workerId: "verifier-a",
     coverageIds: [],
     candidateId: "candidate-1",
   });
-  scenario.apply({ type: "assignment_started", assignmentId: "record-verify-1" });
+  scenario.apply({ type: "assignment_started", assignmentId: "candidate-verify-1" });
   scenario.apply({
     type: "assignment_completed",
-    assignmentId: "record-verify-1",
+    assignmentId: "candidate-verify-1",
     outcome: VALID,
   });
+  scenario.apply({
+    type: "evidence_requirement_opened",
+    requirementId: "requirement-1",
+    kind: "deployment_fact",
+    scope: "finding_handoff",
+    candidateId: "candidate-1",
+    description: "Confirm production proxy header stripping.",
+  });
+  scenario.apply({
+    type: "candidate_disposition_recorded",
+    candidateId: "candidate-1",
+    verdict: "needs_validation",
+    verifierAssignmentId: "candidate-verify-1",
+  });
+
   expectCode(
     () =>
       scenario.attempt({
-        type: "candidate_final_verified",
-        candidateId: "candidate-1",
-        verifierAssignmentId: "record-verify-1",
+        type: "evidence_requirement_resolved",
+        requirementId: "requirement-1",
+        resolution: "Production proxy strips the header.",
       }),
-    "independence_violation",
+    "invalid_evidence",
   );
 });
 

@@ -108,6 +108,15 @@ function requirementOrFail(state: AuditRunState, requirementId: string): Evidenc
   return requirement;
 }
 
+function hasOpenFindingHandoff(state: AuditRunState, candidateId: string): boolean {
+  return Object.values(state.evidenceRequirements).some(
+    (requirement) =>
+      requirement.candidateId === candidateId &&
+      requirement.scope === "finding_handoff" &&
+      requirement.status === "open",
+  );
+}
+
 function requireSucceededValidAssignment(assignment: WorkerAssignment): void {
   if (assignment.status !== "succeeded" || assignment.outcome?.kind !== "valid_result") {
     fail(
@@ -140,19 +149,11 @@ function verifyPhaseAdvance(state: AuditRunState, to: ActiveRunStatus): void {
       if (candidate.verdict === "unvalidated") {
         fail("unresolved_work", "cannot leave candidate validation with unvalidated candidates");
       }
-      if (candidate.verdict === "needs_validation") {
-        const hasOpenHandoff = Object.values(state.evidenceRequirements).some(
-          (requirement) =>
-            requirement.candidateId === candidate.candidateId &&
-            requirement.scope === "finding_handoff" &&
-            requirement.status === "open",
+      if (candidate.verdict === "needs_validation" && !hasOpenFindingHandoff(state, candidate.candidateId)) {
+        fail(
+          "invalid_evidence",
+          "needs_validation candidate " + candidate.candidateId + " requires an open handoff requirement",
         );
-        if (!hasOpenHandoff) {
-          fail(
-            "invalid_evidence",
-            "needs_validation candidate " + candidate.candidateId + " requires an open handoff requirement",
-          );
-        }
       }
     }
   }
@@ -166,6 +167,12 @@ function verifyPhaseAdvance(state: AuditRunState, to: ActiveRunStatus): void {
         fail(
           "unresolved_work",
           "candidate " + candidate.candidateId + " has not passed final record verification",
+        );
+      }
+      if (candidate.verdict === "needs_validation" && !hasOpenFindingHandoff(state, candidate.candidateId)) {
+        fail(
+          "invalid_evidence",
+          "needs_validation candidate " + candidate.candidateId + " lost its open handoff requirement",
         );
       }
     }
@@ -193,6 +200,12 @@ function verifyCompletion(state: AuditRunState): void {
       candidate.finalVerifierAssignmentId === null
     ) {
       fail("unresolved_work", "run cannot complete before final verification of " + candidate.candidateId);
+    }
+    if (candidate.verdict === "needs_validation" && !hasOpenFindingHandoff(state, candidate.candidateId)) {
+      fail(
+        "invalid_evidence",
+        "run cannot complete after needs_validation handoff evidence is closed without revalidation",
+      );
     }
   }
   const openRunBlocker = Object.values(state.evidenceRequirements).find(
@@ -287,23 +300,41 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       requireText(event.assignmentId, "assignmentId");
       requireText(event.workerId, "workerId");
       if (state.assignments[event.assignmentId]) fail("invalid_assignment", "duplicate assignment");
+      if (new Set(event.coverageIds).size !== event.coverageIds.length) {
+        fail("invalid_assignment", "assignment coverageIds must be unique");
+      }
 
       if (event.kind === "hunter" && event.coverageIds.length === 0) {
         fail("invalid_assignment", "hunter assignment requires coverage units");
+      }
+      if (event.kind !== "hunter" && event.coverageIds.length !== 0) {
+        fail("invalid_assignment", event.kind + " assignment must not own coverage units");
       }
       if (event.kind === "candidate_verifier" || event.kind === "record_verifier") {
         if (event.coverageIds.length !== 0) fail("invalid_assignment", "verifier assignment must not own coverage");
         if (event.candidateId === null) fail("invalid_assignment", "verifier assignment requires candidateId");
         const candidate = candidateOrFail(state, event.candidateId);
-        if (event.kind === "candidate_verifier" && candidate.verdict !== "unvalidated") {
-          fail("invalid_candidate", "candidate verifier requires unvalidated candidate");
+        if (event.kind === "candidate_verifier") {
+          if (candidate.verdict !== "unvalidated") {
+            fail("invalid_candidate", "candidate verifier requires unvalidated candidate");
+          }
+          if (event.workerId === candidate.originWorkerId) {
+            fail("independence_violation", "hunter cannot be assigned to validate its own candidate");
+          }
         }
-        if (
-          event.kind === "record_verifier" &&
-          candidate.verdict !== "confirmed" &&
-          candidate.verdict !== "needs_validation"
-        ) {
-          fail("invalid_candidate", "record verifier requires a retained final record");
+        if (event.kind === "record_verifier") {
+          if (candidate.verdict !== "confirmed" && candidate.verdict !== "needs_validation") {
+            fail("invalid_candidate", "record verifier requires a retained final record");
+          }
+          const candidateVerifier = candidate.candidateVerifierAssignmentId
+            ? assignmentOrFail(state, candidate.candidateVerifierAssignmentId)
+            : null;
+          if (
+            event.workerId === candidate.originWorkerId ||
+            (candidateVerifier && event.workerId === candidateVerifier.workerId)
+          ) {
+            fail("independence_violation", "final verifier assignment must use a fresh worker");
+          }
         }
       } else if (event.candidateId !== null) {
         fail("invalid_assignment", event.kind + " assignment must not carry candidateId");
@@ -313,6 +344,20 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
         const coverage = coverageOrFail(state, coverageId);
         if (coverage.status !== "planned" || coverage.assignmentId !== null) {
           fail("invalid_coverage", "coverage unit " + coverageId + " is not available for assignment");
+        }
+        if (
+          event.kind === "hunter" &&
+          Object.values(state.assignments).some(
+            (assignment) =>
+              assignment.kind === "hunter" &&
+              assignment.workerId === event.workerId &&
+              assignment.coverageIds.includes(coverageId),
+          )
+        ) {
+          fail(
+            "independence_violation",
+            "reassigned coverage " + coverageId + " requires a fresh hunter worker",
+          );
         }
       }
 
@@ -411,6 +456,9 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       if (coverage.assignmentId !== assignment.assignmentId || coverage.status !== "in_progress") {
         fail("invalid_coverage", "coverage is not active under assignment");
       }
+      if (new Set(event.candidateIds).size !== event.candidateIds.length) {
+        fail("invalid_coverage", "coverage candidateIds must be unique");
+      }
       if (event.resolution === "covered") {
         if (event.candidateIds.length !== 0 || event.unresolved.length !== 0) {
           fail("invalid_coverage", "covered unit cannot carry candidates or unresolved blockers");
@@ -501,6 +549,15 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       requireText(event.resolution, "resolution");
       const requirement = requirementOrFail(state, event.requirementId);
       if (requirement.status !== "open") fail("invalid_evidence", "evidence requirement is already resolved");
+      if (requirement.scope === "finding_handoff" && requirement.candidateId !== null) {
+        const candidate = candidateOrFail(state, requirement.candidateId);
+        if (candidate.verdict === "needs_validation") {
+          fail(
+            "invalid_evidence",
+            "needs_validation handoff evidence cannot resolve without a candidate revalidation transition",
+          );
+        }
+      }
       next.evidenceRequirements[event.requirementId] = {
         ...requirement,
         status: "resolved",
@@ -523,14 +580,8 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       if (verifier.workerId === candidate.originWorkerId) {
         fail("independence_violation", "hunter cannot validate its own candidate");
       }
-      if (event.verdict === "needs_validation") {
-        const blocker = Object.values(state.evidenceRequirements).find(
-          (requirement) =>
-            requirement.candidateId === candidate.candidateId &&
-            requirement.scope === "finding_handoff" &&
-            requirement.status === "open",
-        );
-        if (!blocker) fail("invalid_evidence", "needs_validation disposition requires open handoff evidence");
+      if (event.verdict === "needs_validation" && !hasOpenFindingHandoff(state, candidate.candidateId)) {
+        fail("invalid_evidence", "needs_validation disposition requires open handoff evidence");
       }
       next.candidates[event.candidateId] = {
         ...candidate,
@@ -550,6 +601,9 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       }
       if (candidate.finalVerifierAssignmentId !== null) {
         fail("invalid_candidate", "candidate already passed final verification");
+      }
+      if (candidate.verdict === "needs_validation" && !hasOpenFindingHandoff(state, candidate.candidateId)) {
+        fail("invalid_evidence", "needs_validation final verification requires an open handoff requirement");
       }
       const verifier = assignmentOrFail(state, event.verifierAssignmentId);
       requireSucceededValidAssignment(verifier);
