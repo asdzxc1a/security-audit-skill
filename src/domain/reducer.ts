@@ -7,6 +7,7 @@ import {
   type Candidate,
   type CandidateClaim,
   type CoverageCheck,
+  type CoverageDefinition,
   type CoverageUnit,
   type EvidenceRequirement,
   type SourceReference,
@@ -148,6 +149,50 @@ function validateCandidateClaim(claim: CandidateClaim): void {
   );
   claim.conditions.forEach((condition, index) =>
     requireText(condition, "claim.conditions[" + index + "]"),
+  );
+}
+
+function sameCoverageSemanticIdentity(
+  left: CoverageDefinition,
+  right: CoverageDefinition,
+): boolean {
+  return (
+    left.surface === right.surface &&
+    left.boundary === right.boundary &&
+    left.subsystem === right.subsystem &&
+    left.attackClass === right.attackClass &&
+    left.lifecycle === right.lifecycle
+  );
+}
+
+function validateCoverageDefinition(definition: CoverageDefinition): void {
+  if (!isObject(definition)) fail("invalid_coverage", "coverage definition must be an object");
+  requireText(definition.surface, "coverage.definition.surface");
+  requireText(definition.boundary, "coverage.definition.boundary");
+  requireText(definition.subsystem, "coverage.definition.subsystem");
+  requireText(definition.attackClass, "coverage.definition.attackClass");
+  if (definition.lifecycle !== null) {
+    requireText(definition.lifecycle, "coverage.definition.lifecycle", 4096);
+  }
+  requireBoundedList(definition.startingPaths, "coverage.definition.startingPaths", 128);
+  if (definition.startingPaths.length === 0) {
+    fail("invalid_coverage", "coverage definition requires starting paths");
+  }
+  if (new Set(definition.startingPaths).size !== definition.startingPaths.length) {
+    fail("invalid_coverage", "coverage starting paths must be unique");
+  }
+  definition.startingPaths.forEach((startingPath, index) =>
+    requireSafeRelativePath(startingPath, "coverage.definition.startingPaths[" + index + "]"),
+  );
+  requireBoundedList(definition.methodologyRefs, "coverage.definition.methodologyRefs", 64);
+  if (definition.methodologyRefs.length === 0) {
+    fail("invalid_coverage", "coverage definition requires methodology references");
+  }
+  if (new Set(definition.methodologyRefs).size !== definition.methodologyRefs.length) {
+    fail("invalid_coverage", "coverage methodology references must be unique");
+  }
+  definition.methodologyRefs.forEach((reference, index) =>
+    requireText(reference, "coverage.definition.methodologyRefs[" + index + "]", 4096),
   );
 }
 
@@ -454,8 +499,21 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       if (state.status !== "coverage_planning") fail("invalid_phase", "coverage units register during coverage planning");
       requireId(event.coverageId, "coverageId");
       if (state.coverageUnits[event.coverageId]) fail("invalid_coverage", "duplicate coverage unit");
+      validateCoverageDefinition(event.definition);
+      if (
+        Object.values(state.coverageUnits).some((coverage) =>
+          sameCoverageSemanticIdentity(coverage.definition, event.definition),
+        )
+      ) {
+        fail("invalid_coverage", "duplicate coverage semantic identity");
+      }
       next.coverageUnits[event.coverageId] = {
         coverageId: event.coverageId,
+        definition: {
+          ...event.definition,
+          startingPaths: [...event.definition.startingPaths],
+          methodologyRefs: [...event.definition.methodologyRefs],
+        },
         status: "planned",
         assignmentId: null,
         candidateIds: [],
@@ -473,6 +531,9 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       requireId(event.assignmentId, "assignmentId");
       requireId(event.workerId, "workerId");
       if (state.assignments[event.assignmentId]) fail("invalid_assignment", "duplicate assignment");
+      if (Object.values(state.assignments).some((assignment) => assignment.workerId === event.workerId)) {
+        fail("independence_violation", "workerId must be unique per assignment invocation");
+      }
       if (new Set(event.coverageIds).size !== event.coverageIds.length) {
         fail("invalid_assignment", "assignment coverageIds must be unique");
       }
@@ -619,8 +680,10 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
         originWorkerId: assignment.workerId,
         claim: structuredClone(event.claim),
         verdict: "unvalidated",
+        candidateValidationReason: null,
         candidateVerifierAssignmentId: null,
         finalVerifierAssignmentId: null,
+        finalVerificationReason: null,
       };
       return next;
     }
@@ -712,6 +775,35 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       return next;
     }
 
+    case "coverage_reopened": {
+      if (state.status !== "hunting") fail("invalid_phase", "coverage reopens during hunting");
+      requireText(event.reason, "reason");
+      const coverage = coverageOrFail(state, event.coverageId);
+      if (
+        coverage.status !== "covered" &&
+        coverage.status !== "candidate" &&
+        coverage.status !== "blocked" &&
+        coverage.status !== "deferred"
+      ) {
+        fail("invalid_coverage", "coverage status is not reopenable");
+      }
+      const critic = assignmentOrFail(state, event.criticAssignmentId);
+      requireSucceededValidAssignment(critic);
+      if (critic.kind !== "coverage_critic") {
+        fail("invalid_assignment", "coverage reopen requires successful coverage critic");
+      }
+      next.coverageUnits[event.coverageId] = {
+        ...coverage,
+        status: "planned",
+        assignmentId: null,
+        candidateIds: [],
+        reviewedPaths: [],
+        checks: [],
+        unresolved: [],
+      };
+      return next;
+    }
+
     case "coverage_classified": {
       requireText(event.reason, "reason");
       const coverage = coverageOrFail(state, event.coverageId);
@@ -790,12 +882,26 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       if (verifier.workerId === candidate.originWorkerId) {
         fail("independence_violation", "hunter cannot validate its own candidate");
       }
+      requireText(event.reason, "reason");
       if (event.verdict === "needs_validation" && !hasOpenFindingHandoff(state, candidate.candidateId)) {
         fail("invalid_evidence", "needs_validation disposition requires open handoff evidence");
       }
+      if (event.verdict === "confirmed" || event.verdict === "needs_validation") {
+        if (event.validatedClaim === null) {
+          fail("invalid_candidate", "retained candidate disposition requires validatedClaim");
+        }
+        validateCandidateClaim(event.validatedClaim);
+      } else if (event.validatedClaim !== null) {
+        fail("invalid_candidate", "rejected candidate disposition must not carry validatedClaim");
+      }
       next.candidates[event.candidateId] = {
         ...candidate,
+        claim:
+          event.validatedClaim === null
+            ? candidate.claim
+            : structuredClone(event.validatedClaim),
         verdict: event.verdict,
+        candidateValidationReason: event.reason,
         candidateVerifierAssignmentId: verifier.assignmentId,
       };
       return next;
@@ -805,6 +911,7 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       if (state.status !== "record_verification") {
         fail("invalid_phase", "final verification occurs during record verification");
       }
+      requireText(event.reason, "reason");
       const candidate = candidateOrFail(state, event.candidateId);
       if (candidate.verdict !== "confirmed" && candidate.verdict !== "needs_validation") {
         fail("invalid_candidate", "only retained final records receive final verification");
@@ -832,6 +939,42 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       next.candidates[event.candidateId] = {
         ...candidate,
         finalVerifierAssignmentId: verifier.assignmentId,
+        finalVerificationReason: event.reason,
+      };
+      return next;
+    }
+
+    case "candidate_final_rejected": {
+      if (state.status !== "record_verification") {
+        fail("invalid_phase", "final rejection occurs during record verification");
+      }
+      requireText(event.reason, "reason");
+      const candidate = candidateOrFail(state, event.candidateId);
+      if (candidate.verdict !== "confirmed" && candidate.verdict !== "needs_validation") {
+        fail("invalid_candidate", "only retained final records may be rejected");
+      }
+      if (candidate.finalVerifierAssignmentId !== null) {
+        fail("invalid_candidate", "candidate already passed final verification");
+      }
+      const verifier = assignmentOrFail(state, event.verifierAssignmentId);
+      requireSucceededValidAssignment(verifier);
+      if (verifier.kind !== "record_verifier" || verifier.candidateId !== candidate.candidateId) {
+        fail("invalid_assignment", "final rejection requires matching record verifier");
+      }
+      const candidateVerifier = candidate.candidateVerifierAssignmentId
+        ? assignmentOrFail(state, candidate.candidateVerifierAssignmentId)
+        : null;
+      if (
+        verifier.workerId === candidate.originWorkerId ||
+        (candidateVerifier && verifier.workerId === candidateVerifier.workerId)
+      ) {
+        fail("independence_violation", "final verifier must be fresh");
+      }
+      next.candidates[event.candidateId] = {
+        ...candidate,
+        verdict: "rejected",
+        finalVerifierAssignmentId: verifier.assignmentId,
+        finalVerificationReason: event.reason,
       };
       return next;
     }

@@ -2,6 +2,7 @@ import type {
   AdapterRef,
   CandidateClaim,
   CoverageCheck,
+  CoverageDefinition,
   EvidenceRequirementKind,
   SourceReference,
   WorkerOutcome,
@@ -10,11 +11,14 @@ import type {
   CandidateDraft,
   CandidateEvidenceNeed,
   CandidateValidationResult,
+  CoverageCriticResult,
+  CoverageCriticWorkerTask,
   FailureWorkerOutcomeKind,
   HunterEvidence,
   HunterWorkerResult,
   ParsedWorkerObservation,
   ReconWorkerResult,
+  RecordVerificationResult,
   WorkerResult,
   WorkerTask,
 } from "./contracts";
@@ -243,12 +247,58 @@ function parseEvidenceNeeds(value: unknown): CandidateEvidenceNeed[] {
   });
 }
 
+function parseCoverageDefinition(value: unknown, label: string): CoverageDefinition {
+  if (!isObject(value)) fail(label + " must be an object");
+  const lifecycle =
+    value.lifecycle === null || value.lifecycle === undefined
+      ? null
+      : text(value.lifecycle, label + ".lifecycle", 4096);
+  const startingPaths = array(value.startingPaths, label + ".startingPaths", 128).map(
+    (entry, index) => safeRelativePath(entry, label + ".startingPaths[" + index + "]"),
+  );
+  if (startingPaths.length === 0) fail(label + ".startingPaths must not be empty");
+  if (new Set(startingPaths).size !== startingPaths.length) {
+    fail(label + ".startingPaths must be unique");
+  }
+  const methodologyRefs = array(value.methodologyRefs, label + ".methodologyRefs", 64).map(
+    (entry, index) => text(entry, label + ".methodologyRefs[" + index + "]", 4096),
+  );
+  if (methodologyRefs.length === 0) fail(label + ".methodologyRefs must not be empty");
+  if (new Set(methodologyRefs).size !== methodologyRefs.length) {
+    fail(label + ".methodologyRefs must be unique");
+  }
+  return {
+    surface: text(value.surface, label + ".surface"),
+    boundary: text(value.boundary, label + ".boundary"),
+    subsystem: text(value.subsystem, label + ".subsystem"),
+    attackClass: text(value.attackClass, label + ".attackClass"),
+    lifecycle,
+    startingPaths,
+    methodologyRefs,
+  };
+}
+
 function parseReconResult(value: unknown): ReconWorkerResult {
   if (!isObject(value) || value.kind !== "recon_result") fail("expected recon_result");
-  return {
-    kind: "recon_result",
-    coverageIds: uniqueTextArray(value.coverageIds, "coverageIds", true, MAX_PATH_ITEMS),
-  };
+  const entries = array(value.coverageDefinitions, "coverageDefinitions", MAX_PATH_ITEMS);
+  const coverageDefinitions = entries.map((entry, index) =>
+    parseCoverageDefinition(entry, "coverageDefinitions[" + index + "]"),
+  );
+
+  const semanticKeys = coverageDefinitions.map((definition) =>
+    JSON.stringify([
+      definition.surface,
+      definition.boundary,
+      definition.subsystem,
+      definition.attackClass,
+      definition.lifecycle,
+    ]),
+  );
+  if (new Set(semanticKeys).size !== semanticKeys.length) {
+    fail("coverage definitions must have unique semantic identities");
+  }
+
+  return { kind: "recon_result", coverageDefinitions };
 }
 
 function parseHunterResult(value: unknown): HunterWorkerResult {
@@ -299,6 +349,7 @@ function parseCandidateResult(value: unknown): CandidateValidationResult {
   ) {
     fail("candidate verdict is invalid");
   }
+  const reason = text(value.reason, "candidate validation reason");
   const evidenceRequirements = parseEvidenceNeeds(value.evidenceRequirements ?? []);
   if (value.verdict === "needs_validation" && evidenceRequirements.length === 0) {
     fail("needs_validation requires evidenceRequirements");
@@ -306,10 +357,107 @@ function parseCandidateResult(value: unknown): CandidateValidationResult {
   if (value.verdict !== "needs_validation" && evidenceRequirements.length !== 0) {
     fail("only needs_validation may carry evidenceRequirements");
   }
+
+  let validatedClaim: CandidateClaim | null = null;
+  if (value.verdict === "confirmed" || value.verdict === "needs_validation") {
+    if (value.validatedClaim === null || value.validatedClaim === undefined) {
+      fail("retained candidate validation requires validatedClaim");
+    }
+    validatedClaim = parseCandidateClaim(value.validatedClaim);
+  } else if (value.validatedClaim !== null && value.validatedClaim !== undefined) {
+    fail("rejected candidate validation must not carry validatedClaim");
+  }
+
   return {
     kind: "candidate_validation_result",
     verdict: value.verdict,
+    reason,
+    validatedClaim,
     evidenceRequirements,
+  };
+}
+
+
+
+function parseCoverageCriticResult(
+  value: unknown,
+  task: CoverageCriticWorkerTask,
+): CoverageCriticResult {
+  if (!isObject(value) || value.kind !== "coverage_critic_result") {
+    fail("expected coverage_critic_result");
+  }
+  if (typeof value.stop !== "boolean") fail("coverage critic stop must be boolean");
+
+  const reviewedCoverageIds = uniqueTextArray(
+    value.reviewedCoverageIds,
+    "reviewedCoverageIds",
+    true,
+    MAX_PATH_ITEMS,
+  );
+  const expectedReviewed = task.coverageUnits.map((unit) => unit.coverageId).sort();
+  const actualReviewed = [...reviewedCoverageIds].sort();
+  if (
+    expectedReviewed.length !== actualReviewed.length ||
+    expectedReviewed.some((coverageId, index) => coverageId !== actualReviewed[index])
+  ) {
+    fail("coverage critic must account for every coverage unit exactly once");
+  }
+
+  const rawReassignments = array(value.reassignments, "reassignments", 64);
+  const reassignments = rawReassignments.map((entry, index) => {
+    if (!isObject(entry)) fail("reassignments[" + index + "] must be an object");
+    return {
+      coverageId: text(entry.coverageId, "reassignments[" + index + "].coverageId", MAX_ID_BYTES),
+      reason: text(entry.reason, "reassignments[" + index + "].reason"),
+    };
+  });
+  const reassignmentIds = reassignments.map((entry) => entry.coverageId);
+  if (new Set(reassignmentIds).size !== reassignmentIds.length) {
+    fail("coverage critic reassignments must contain unique coverage ids");
+  }
+
+  const reopenable = new Set(task.reopenableCoverageIds);
+  for (const coverageId of reassignmentIds) {
+    if (!reopenable.has(coverageId)) {
+      fail("coverage critic may only reassign reopenable coverage units");
+    }
+  }
+
+  const requiredReassignments = task.coverageUnits
+    .filter((unit) => unit.status === "blocked" || unit.status === "deferred")
+    .map((unit) => unit.coverageId);
+  for (const coverageId of requiredReassignments) {
+    if (!reassignmentIds.includes(coverageId)) {
+      fail("coverage critic must reassign every blocked or deferred coverage unit");
+    }
+  }
+
+  if (value.stop && reassignments.length !== 0) {
+    fail("clean-stop coverage critic cannot request reassignment");
+  }
+  if (!value.stop && reassignments.length === 0) {
+    fail("non-stop coverage critic must request reassignment");
+  }
+
+  return {
+    kind: "coverage_critic_result",
+    reviewedCoverageIds,
+    reassignments,
+    stop: value.stop,
+  };
+}
+
+function parseRecordVerificationResult(value: unknown): RecordVerificationResult {
+  if (!isObject(value) || value.kind !== "record_verification_result") {
+    fail("expected record_verification_result");
+  }
+  if (value.disposition !== "accept" && value.disposition !== "reject") {
+    fail("record verification disposition is invalid");
+  }
+  return {
+    kind: "record_verification_result",
+    disposition: value.disposition,
+    reason: text(value.reason, "record verification reason"),
   };
 }
 
@@ -321,6 +469,10 @@ function resultForTask(task: WorkerTask, value: unknown): WorkerResult {
       return parseHunterResult(value);
     case "candidate_verifier":
       return parseCandidateResult(value);
+    case "coverage_critic":
+      return parseCoverageCriticResult(value, task);
+    case "record_verifier":
+      return parseRecordVerificationResult(value);
   }
 }
 

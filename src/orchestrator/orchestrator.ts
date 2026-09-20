@@ -5,7 +5,7 @@ import {
   type AuditEvent,
   type AuditRunState,
   type Candidate,
-  type WorkerOutcome,
+  type CoverageUnit,
 } from "../domain/contracts";
 import { DomainTransitionError } from "../domain/reducer";
 import type { AuditEventStore } from "../storage/contracts";
@@ -13,10 +13,12 @@ import {
   ORCHESTRATION_SCHEMA_VERSION,
   type AuditRunRequest,
   type CandidateValidationResult,
+  type CoverageCriticResult,
   type HunterWorkerResult,
   type IdSource,
   type ParsedWorkerObservation,
   type ReconWorkerResult,
+  type RecordVerificationResult,
   type WorkerAdapter,
   type WorkerTask,
 } from "./contracts";
@@ -54,7 +56,10 @@ interface AssignmentExecution {
   readonly observation: ParsedWorkerObservation;
 }
 
+type HunterResolution = "resolved" | "unresolved" | "terminal";
+
 const TERMINAL = new Set(["complete", "incomplete", "cancelled", "failed"]);
+const MAX_CRITIC_PASSES = 8;
 
 export class AuditOrchestrator {
   constructor(
@@ -64,6 +69,25 @@ export class AuditOrchestrator {
   ) {}
 
   async runThroughCandidateValidation(request: AuditRunRequest): Promise<AuditRunState> {
+    return this.runDiscovery(request, false);
+  }
+
+  async runFullAudit(request: AuditRunRequest): Promise<AuditRunState> {
+    const discovered = await this.runDiscovery(request, true);
+    if (TERMINAL.has(discovered.status)) return discovered;
+    if (discovered.status !== "record_verification") {
+      throw new OrchestrationError(
+        "unexpected_state",
+        "full audit expected record_verification, got " + discovered.status,
+      );
+    }
+    return this.finalizeRun(request.runId);
+  }
+
+  private async runDiscovery(
+    request: AuditRunRequest,
+    withCoverageCritics: boolean,
+  ): Promise<AuditRunState> {
     if (this.store.loadState(request.runId) !== null) {
       throw new OrchestrationError("run_exists", "run already exists: " + request.runId);
     }
@@ -88,102 +112,33 @@ export class AuditOrchestrator {
 
     const recon = reconExecution.observation.result as ReconWorkerResult;
     this.append(request.runId, { type: "phase_advanced", to: "coverage_planning" });
-    for (const coverageId of recon.coverageIds) {
-      this.append(request.runId, { type: "coverage_unit_registered", coverageId });
+    const coverageIds: string[] = [];
+    for (const definition of recon.coverageDefinitions) {
+      const coverageId = this.ids.next("coverage");
+      this.append(request.runId, {
+        type: "coverage_unit_registered",
+        coverageId,
+        definition: structuredClone(definition),
+      });
+      coverageIds.push(coverageId);
     }
     this.append(request.runId, { type: "phase_advanced", to: "hunting" });
 
-    let incomplete = false;
+    let unresolved = false;
+    for (const coverageId of coverageIds) {
+      const resolution = await this.runHunterForCoverage(request.runId, coverageId);
+      if (resolution === "terminal") return this.current(request.runId);
+      if (resolution === "unresolved") unresolved = true;
+    }
 
-    for (const coverageId of recon.coverageIds) {
-      const execution = await this.executeHunter(request.runId, coverageId);
-      if (execution === null) return this.current(request.runId);
-
-      if (execution.observation.outcome.kind !== "valid_result") {
-        const reason = "hunter worker ended with " + execution.observation.outcome.kind;
-        this.append(request.runId, {
-          type: "coverage_requeued",
-          coverageId,
-          assignmentId: execution.assignmentId,
-          reason,
-        });
-        this.append(request.runId, {
-          type: "coverage_classified",
-          coverageId,
-          status: "deferred",
-          reason,
-        });
-        incomplete = true;
-        continue;
+    if (withCoverageCritics) {
+      const criticsClean = await this.runCoverageCriticCycle(request.runId);
+      if (!criticsClean || TERMINAL.has(this.current(request.runId).status)) {
+        return this.current(request.runId);
       }
-
-      const result = execution.observation.result as HunterWorkerResult;
-      if (result.resolution === "covered") {
-        this.append(request.runId, {
-          type: "coverage_resolved",
-          coverageId,
-          assignmentId: execution.assignmentId,
-          resolution: "covered",
-          candidateIds: [],
-          reviewedPaths: [...result.reviewedPaths],
-          checks: result.checks.map((check) => ({ ...check })),
-          unresolved: [],
-        });
-      } else if (result.resolution === "blocked") {
-        this.append(request.runId, {
-          type: "coverage_resolved",
-          coverageId,
-          assignmentId: execution.assignmentId,
-          resolution: "blocked",
-          candidateIds: [],
-          reviewedPaths: [...result.reviewedPaths],
-          checks: result.checks.map((check) => ({ ...check })),
-          unresolved: [...result.unresolved],
-        });
-        incomplete = true;
-      } else {
-        const candidateIds: string[] = [];
-        for (const draft of result.candidates) {
-          const current = this.current(request.runId);
-          const existing = Object.values(current.candidates).find(
-            (candidate) => candidate.fingerprint === draft.fingerprint,
-          );
-
-          if (existing) {
-            if (!existing.coverageIds.includes(coverageId)) {
-              this.append(request.runId, {
-                type: "candidate_linked_to_coverage",
-                candidateId: existing.candidateId,
-                coverageId,
-                assignmentId: execution.assignmentId,
-              });
-            }
-            candidateIds.push(existing.candidateId);
-            continue;
-          }
-
-          const candidateId = this.ids.next("candidate");
-          this.append(request.runId, {
-            type: "candidate_registered",
-            candidateId,
-            fingerprint: draft.fingerprint,
-            coverageId,
-            originAssignmentId: execution.assignmentId,
-            claim: structuredClone(draft.claim),
-          });
-          candidateIds.push(candidateId);
-        }
-        this.append(request.runId, {
-          type: "coverage_resolved",
-          coverageId,
-          assignmentId: execution.assignmentId,
-          resolution: "candidate",
-          candidateIds,
-          reviewedPaths: [...result.reviewedPaths],
-          checks: result.checks.map((check) => ({ ...check })),
-          unresolved: [],
-        });
-      }
+      unresolved = Object.values(this.current(request.runId).coverageUnits).some(
+        (coverage) => coverage.status === "blocked" || coverage.status === "deferred",
+      );
     }
 
     this.append(request.runId, { type: "phase_advanced", to: "candidate_validation" });
@@ -198,7 +153,7 @@ export class AuditOrchestrator {
       if (execution === null) return this.current(request.runId);
 
       if (execution.observation.outcome.kind !== "valid_result") {
-        incomplete = true;
+        unresolved = true;
         continue;
       }
 
@@ -221,6 +176,9 @@ export class AuditOrchestrator {
         candidateId: candidate.candidateId,
         verdict: result.verdict,
         verifierAssignmentId: execution.assignmentId,
+        reason: result.reason,
+        validatedClaim:
+          result.validatedClaim === null ? null : structuredClone(result.validatedClaim),
       });
     }
 
@@ -232,7 +190,7 @@ export class AuditOrchestrator {
       (coverage) => coverage.status === "blocked" || coverage.status === "deferred",
     );
 
-    if (incomplete || unresolvedCandidate || unresolvedCoverage) {
+    if (unresolved || unresolvedCandidate || unresolvedCoverage) {
       return this.markIncomplete(
         request.runId,
         "audit has unresolved worker, candidate, or coverage work",
@@ -243,6 +201,226 @@ export class AuditOrchestrator {
       type: "phase_advanced",
       to: "record_verification",
     });
+  }
+
+  private async runHunterForCoverage(
+    runId: string,
+    coverageId: string,
+  ): Promise<HunterResolution> {
+    const execution = await this.executeHunter(runId, coverageId);
+    if (execution === null) return "terminal";
+
+    if (execution.observation.outcome.kind !== "valid_result") {
+      const reason = "hunter worker ended with " + execution.observation.outcome.kind;
+      this.append(runId, {
+        type: "coverage_requeued",
+        coverageId,
+        assignmentId: execution.assignmentId,
+        reason,
+      });
+      this.append(runId, {
+        type: "coverage_classified",
+        coverageId,
+        status: "deferred",
+        reason,
+      });
+      return "unresolved";
+    }
+
+    const result = execution.observation.result as HunterWorkerResult;
+    if (result.resolution === "covered") {
+      this.append(runId, {
+        type: "coverage_resolved",
+        coverageId,
+        assignmentId: execution.assignmentId,
+        resolution: "covered",
+        candidateIds: [],
+        reviewedPaths: [...result.reviewedPaths],
+        checks: result.checks.map((check) => ({ ...check })),
+        unresolved: [],
+      });
+      return "resolved";
+    }
+
+    if (result.resolution === "blocked") {
+      this.append(runId, {
+        type: "coverage_resolved",
+        coverageId,
+        assignmentId: execution.assignmentId,
+        resolution: "blocked",
+        candidateIds: [],
+        reviewedPaths: [...result.reviewedPaths],
+        checks: result.checks.map((check) => ({ ...check })),
+        unresolved: [...result.unresolved],
+      });
+      return "unresolved";
+    }
+
+    const candidateIds: string[] = [];
+    for (const draft of result.candidates) {
+      const current = this.current(runId);
+      const existing = Object.values(current.candidates).find(
+        (candidate) => candidate.fingerprint === draft.fingerprint,
+      );
+
+      if (existing) {
+        if (!existing.coverageIds.includes(coverageId)) {
+          this.append(runId, {
+            type: "candidate_linked_to_coverage",
+            candidateId: existing.candidateId,
+            coverageId,
+            assignmentId: execution.assignmentId,
+          });
+        }
+        candidateIds.push(existing.candidateId);
+        continue;
+      }
+
+      const candidateId = this.ids.next("candidate");
+      this.append(runId, {
+        type: "candidate_registered",
+        candidateId,
+        fingerprint: draft.fingerprint,
+        coverageId,
+        originAssignmentId: execution.assignmentId,
+        claim: structuredClone(draft.claim),
+      });
+      candidateIds.push(candidateId);
+    }
+
+    this.append(runId, {
+      type: "coverage_resolved",
+      coverageId,
+      assignmentId: execution.assignmentId,
+      resolution: "candidate",
+      candidateIds,
+      reviewedPaths: [...result.reviewedPaths],
+      checks: result.checks.map((check) => ({ ...check })),
+      unresolved: [],
+    });
+    return "resolved";
+  }
+
+  private async runCoverageCriticCycle(runId: string): Promise<boolean> {
+    const profile = this.current(runId).profile;
+    const requiredCleanPasses = profile === "quick" ? 1 : 2;
+    let consecutiveClean = 0;
+    let passes = 0;
+
+    while (consecutiveClean < requiredCleanPasses) {
+      if (passes >= MAX_CRITIC_PASSES) {
+        this.markIncomplete(runId, "coverage critic pass limit exhausted");
+        return false;
+      }
+      passes += 1;
+
+      const execution = await this.executeCoverageCritic(runId);
+      if (execution === null) return false;
+      if (execution.observation.outcome.kind !== "valid_result") {
+        this.markIncomplete(
+          runId,
+          "coverage critic ended with " + execution.observation.outcome.kind,
+        );
+        return false;
+      }
+
+      const result = execution.observation.result as CoverageCriticResult;
+      if (result.stop) {
+        consecutiveClean += 1;
+        continue;
+      }
+
+      consecutiveClean = 0;
+      for (const reassignment of result.reassignments) {
+        this.append(runId, {
+          type: "coverage_reopened",
+          coverageId: reassignment.coverageId,
+          criticAssignmentId: execution.assignmentId,
+          reason: reassignment.reason,
+        });
+      }
+
+      for (const reassignment of result.reassignments) {
+        const resolution = await this.runHunterForCoverage(runId, reassignment.coverageId);
+        if (resolution === "terminal") return false;
+      }
+    }
+
+    return true;
+  }
+
+  private async finalizeRun(runId: string): Promise<AuditRunState> {
+    const state = this.current(runId);
+    if (state.status !== "record_verification") {
+      throw new OrchestrationError(
+        "unexpected_state",
+        "finalization requires record_verification state",
+      );
+    }
+
+    const retained = Object.values(state.candidates)
+      .filter(
+        (candidate) =>
+          candidate.verdict === "confirmed" || candidate.verdict === "needs_validation",
+      )
+      .sort((left, right) => left.candidateId.localeCompare(right.candidateId));
+
+    for (const candidate of retained) {
+      const execution = await this.executeRecordVerifier(runId, candidate);
+      if (execution === null) return this.current(runId);
+      if (execution.observation.outcome.kind !== "valid_result") {
+        return this.markIncomplete(
+          runId,
+          "record verifier ended with " + execution.observation.outcome.kind,
+        );
+      }
+
+      const result = execution.observation.result as RecordVerificationResult;
+      if (result.disposition === "accept") {
+        this.append(runId, {
+          type: "candidate_final_verified",
+          candidateId: candidate.candidateId,
+          verifierAssignmentId: execution.assignmentId,
+          reason: result.reason,
+        });
+      } else {
+        this.append(runId, {
+          type: "candidate_final_rejected",
+          candidateId: candidate.candidateId,
+          verifierAssignmentId: execution.assignmentId,
+          reason: result.reason,
+        });
+
+        const requirements = Object.values(this.current(runId).evidenceRequirements)
+          .filter(
+            (requirement) =>
+              requirement.candidateId === candidate.candidateId &&
+              requirement.status === "open",
+          )
+          .sort((left, right) => left.requirementId.localeCompare(right.requirementId));
+        for (const requirement of requirements) {
+          this.append(runId, {
+            type: "evidence_requirement_resolved",
+            requirementId: requirement.requirementId,
+            resolution: "Final record verifier rejected candidate: " + result.reason,
+          });
+        }
+      }
+    }
+
+    this.append(runId, { type: "phase_advanced", to: "reporting" });
+
+    try {
+      return this.append(runId, { type: "run_completed" });
+    } catch (error) {
+      if (
+        error instanceof DomainTransitionError &&
+        (error.code === "unresolved_work" || error.code === "invalid_evidence")
+      ) {
+        return this.markIncomplete(runId, "reporting could not satisfy completion invariants");
+      }
+      throw error;
+    }
   }
 
   private async executeRecon(runId: string): Promise<AssignmentExecution | null> {
@@ -270,6 +448,10 @@ export class AuditOrchestrator {
     coverageId: string,
   ): Promise<AssignmentExecution | null> {
     const state = this.current(runId);
+    const coverage = state.coverageUnits[coverageId];
+    if (!coverage) {
+      throw new OrchestrationError("unexpected_state", "unknown coverage unit " + coverageId);
+    }
     return this.executeAssignment(
       runId,
       "hunter",
@@ -284,6 +466,7 @@ export class AuditOrchestrator {
         sourceSnapshotId: state.sourceSnapshotId,
         profile: state.profile,
         coverageId,
+        definition: structuredClone(coverage.definition),
       }),
     );
   }
@@ -314,9 +497,97 @@ export class AuditOrchestrator {
     );
   }
 
+  private async executeCoverageCritic(runId: string): Promise<AssignmentExecution | null> {
+    const state = this.current(runId);
+    const coverageUnits = Object.values(state.coverageUnits)
+      .map((coverage) => structuredClone(coverage))
+      .sort((left, right) => left.coverageId.localeCompare(right.coverageId));
+    const reopenableCoverageIds = coverageUnits
+      .filter(
+        (coverage) =>
+          coverage.status === "covered" ||
+          coverage.status === "candidate" ||
+          coverage.status === "blocked" ||
+          coverage.status === "deferred",
+      )
+      .map((coverage) => coverage.coverageId);
+
+    return this.executeAssignment(
+      runId,
+      "coverage_critic",
+      [],
+      null,
+      (assignmentId, workerId): WorkerTask => ({
+        schemaVersion: ORCHESTRATION_SCHEMA_VERSION,
+        kind: "coverage_critic",
+        runId,
+        assignmentId,
+        workerId,
+        sourceSnapshotId: state.sourceSnapshotId,
+        profile: state.profile,
+        coverageUnits,
+        reopenableCoverageIds,
+      }),
+    );
+  }
+
+  private async executeRecordVerifier(
+    runId: string,
+    candidate: Candidate,
+  ): Promise<AssignmentExecution | null> {
+    const state = this.current(runId);
+    const retainedVerdict = candidate.verdict;
+    if (retainedVerdict !== "confirmed" && retainedVerdict !== "needs_validation") {
+      throw new OrchestrationError("unexpected_state", "record verifier received non-retained candidate");
+    }
+    const candidateValidationReason = candidate.candidateValidationReason;
+    if (candidateValidationReason === null) {
+      throw new OrchestrationError(
+        "unexpected_state",
+        "record verifier requires candidate validation rationale",
+      );
+    }
+    const evidenceRequirements = Object.values(state.evidenceRequirements)
+      .filter(
+        (requirement) =>
+          requirement.candidateId === candidate.candidateId &&
+          requirement.status === "open",
+      )
+      .map((requirement) => structuredClone(requirement))
+      .sort((left, right) => left.requirementId.localeCompare(right.requirementId));
+
+    return this.executeAssignment(
+      runId,
+      "record_verifier",
+      [],
+      candidate.candidateId,
+      (assignmentId, workerId): WorkerTask => ({
+        schemaVersion: ORCHESTRATION_SCHEMA_VERSION,
+        kind: "record_verifier",
+        runId,
+        assignmentId,
+        workerId,
+        sourceSnapshotId: state.sourceSnapshotId,
+        profile: state.profile,
+        candidateId: candidate.candidateId,
+        fingerprint: candidate.fingerprint,
+        coverageIds: [...candidate.coverageIds],
+        claim: structuredClone(candidate.claim),
+        verdict: retainedVerdict,
+        candidateValidationReason,
+        evidenceRequirements,
+      }),
+    );
+  }
+
   private async executeAssignment(
     runId: string,
-    kind: "recon" | "hunter" | "candidate_verifier",
+    kind:
+      | "recon"
+      | "hunter"
+      | "coverage_critic"
+      | "candidate_verifier"
+      | "record_verifier",
     coverageIds: readonly string[],
     candidateId: string | null,
     taskFactory: (assignmentId: string, workerId: string) => WorkerTask,

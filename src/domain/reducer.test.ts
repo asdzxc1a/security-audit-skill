@@ -7,6 +7,7 @@ import {
   type AuditRunState,
   type CandidateClaim,
   type CoverageCheck,
+  type CoverageDefinition,
   type WorkerOutcome,
 } from "./contracts";
 import { DomainTransitionError, reduceAuditState, type TransitionErrorCode } from "./reducer";
@@ -35,6 +36,16 @@ const CLAIM: CandidateClaim = {
     },
   ],
   conditions: ["Attacker has an authenticated tenant account."],
+};
+
+const COVERAGE_DEFINITION: CoverageDefinition = {
+  surface: "GET /documents/:id",
+  boundary: "tenant ownership",
+  subsystem: "documents",
+  attackClass: "Access control",
+  lifecycle: null,
+  startingPaths: ["src/documents.ts"],
+  methodologyRefs: ["ATTACK-CLASSES.md#Access control"],
 };
 
 const COVERAGE_CHECKS: readonly CoverageCheck[] = [
@@ -95,7 +106,11 @@ function advanceToHunting(scenario: Scenario, coverageId = "coverage-1"): void {
   createRun(scenario);
   scenario.apply({ type: "phase_advanced", to: "reconnaissance" });
   scenario.apply({ type: "phase_advanced", to: "coverage_planning" });
-  scenario.apply({ type: "coverage_unit_registered", coverageId });
+  scenario.apply({
+    type: "coverage_unit_registered",
+    coverageId,
+    definition: COVERAGE_DEFINITION,
+  });
   scenario.apply({ type: "phase_advanced", to: "hunting" });
 }
 
@@ -156,6 +171,8 @@ function verifyCandidate(
     candidateId: "candidate-1",
     verdict,
     verifierAssignmentId: "candidate-verify-1",
+    reason: "Independent candidate verifier reconstructed the claim.",
+    validatedClaim: verdict === "rejected" ? null : CLAIM,
   });
 }
 
@@ -183,6 +200,7 @@ test("valid confirmed-finding lifecycle reaches complete", () => {
     type: "candidate_final_verified",
     candidateId: "candidate-1",
     verifierAssignmentId: "record-verify-1",
+    reason: "Independent final verification accepted the retained record.",
   });
   scenario.apply({ type: "phase_advanced", to: "reporting" });
   const complete = scenario.apply({ type: "run_completed" });
@@ -193,6 +211,31 @@ test("valid confirmed-finding lifecycle reaches complete", () => {
 });
 
 
+
+test("coverage semantic aliases are rejected even with different ids", () => {
+  const scenario = new Scenario();
+  createRun(scenario);
+  scenario.apply({ type: "phase_advanced", to: "reconnaissance" });
+  scenario.apply({ type: "phase_advanced", to: "coverage_planning" });
+  scenario.apply({
+    type: "coverage_unit_registered",
+    coverageId: "coverage-1",
+    definition: COVERAGE_DEFINITION,
+  });
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "coverage_unit_registered",
+        coverageId: "coverage-2",
+        definition: {
+          ...COVERAGE_DEFINITION,
+          startingPaths: ["src/alternate.ts"],
+        },
+      }),
+    "invalid_coverage",
+  );
+});
 
 test("evidence-free covered resolution is rejected by the reducer itself", () => {
   const scenario = new Scenario();
@@ -309,6 +352,8 @@ test("needs_validation requires a durable open handoff requirement", () => {
         candidateId: "candidate-1",
         verdict: "needs_validation",
         verifierAssignmentId: "candidate-verify-1",
+        reason: "Independent verifier needs production context.",
+        validatedClaim: CLAIM,
       }),
     "invalid_evidence",
   );
@@ -326,6 +371,8 @@ test("needs_validation requires a durable open handoff requirement", () => {
     candidateId: "candidate-1",
     verdict: "needs_validation",
     verifierAssignmentId: "candidate-verify-1",
+    reason: "Independent verifier needs production context.",
+    validatedClaim: CLAIM,
   });
   assert.equal(state.candidates["candidate-1"].verdict, "needs_validation");
 });
@@ -560,6 +607,8 @@ test("needs_validation handoff remains open until an explicit revalidation trans
     candidateId: "candidate-1",
     verdict: "needs_validation",
     verifierAssignmentId: "candidate-verify-1",
+    reason: "Independent verifier needs production context.",
+    validatedClaim: CLAIM,
   });
 
   expectCode(

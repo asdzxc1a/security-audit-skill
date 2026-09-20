@@ -2,13 +2,17 @@ import type {
   AdapterRef,
   AuditProfile,
   CandidateClaim,
+  CandidateVerdict,
   CoverageCheck,
+  CoverageDefinition,
+  CoverageUnit,
+  EvidenceRequirement,
   EvidenceRequirementKind,
   WorkerOutcome,
   WorkerOutcomeKind,
 } from "../domain/contracts";
 
-export const ORCHESTRATION_SCHEMA_VERSION = 2 as const;
+export const ORCHESTRATION_SCHEMA_VERSION = 3 as const;
 export type OrchestrationSchemaVersion = typeof ORCHESTRATION_SCHEMA_VERSION;
 
 export interface AuditRunRequest {
@@ -39,6 +43,7 @@ export interface ReconWorkerTask extends WorkerTaskBase<"recon"> {
 
 export interface HunterWorkerTask extends WorkerTaskBase<"hunter"> {
   readonly coverageId: string;
+  readonly definition: CoverageDefinition;
 }
 
 export interface CandidateVerifierWorkerTask extends WorkerTaskBase<"candidate_verifier"> {
@@ -48,10 +53,27 @@ export interface CandidateVerifierWorkerTask extends WorkerTaskBase<"candidate_v
   readonly claim: CandidateClaim;
 }
 
+export interface CoverageCriticWorkerTask extends WorkerTaskBase<"coverage_critic"> {
+  readonly coverageUnits: readonly CoverageUnit[];
+  readonly reopenableCoverageIds: readonly string[];
+}
+
+export interface RecordVerifierWorkerTask extends WorkerTaskBase<"record_verifier"> {
+  readonly candidateId: string;
+  readonly fingerprint: string;
+  readonly coverageIds: readonly string[];
+  readonly claim: CandidateClaim;
+  readonly verdict: Extract<CandidateVerdict, "confirmed" | "needs_validation">;
+  readonly candidateValidationReason: string;
+  readonly evidenceRequirements: readonly EvidenceRequirement[];
+}
+
 export type WorkerTask =
   | ReconWorkerTask
   | HunterWorkerTask
-  | CandidateVerifierWorkerTask;
+  | CandidateVerifierWorkerTask
+  | CoverageCriticWorkerTask
+  | RecordVerifierWorkerTask;
 
 export interface WorkerAdapter {
   readonly ref: AdapterRef;
@@ -60,7 +82,7 @@ export interface WorkerAdapter {
 
 export interface ReconWorkerResult {
   readonly kind: "recon_result";
-  readonly coverageIds: readonly string[];
+  readonly coverageDefinitions: readonly CoverageDefinition[];
 }
 
 export interface HunterEvidence {
@@ -97,13 +119,35 @@ export interface CandidateEvidenceNeed {
 export interface CandidateValidationResult {
   readonly kind: "candidate_validation_result";
   readonly verdict: "confirmed" | "needs_validation" | "rejected";
+  readonly reason: string;
+  readonly validatedClaim: CandidateClaim | null;
   readonly evidenceRequirements: readonly CandidateEvidenceNeed[];
+}
+
+export interface CoverageReassignmentRequest {
+  readonly coverageId: string;
+  readonly reason: string;
+}
+
+export interface CoverageCriticResult {
+  readonly kind: "coverage_critic_result";
+  readonly reviewedCoverageIds: readonly string[];
+  readonly reassignments: readonly CoverageReassignmentRequest[];
+  readonly stop: boolean;
+}
+
+export interface RecordVerificationResult {
+  readonly kind: "record_verification_result";
+  readonly disposition: "accept" | "reject";
+  readonly reason: string;
 }
 
 export type WorkerResult =
   | ReconWorkerResult
   | HunterWorkerResult
-  | CandidateValidationResult;
+  | CandidateValidationResult
+  | CoverageCriticResult
+  | RecordVerificationResult;
 
 export type FailureWorkerOutcomeKind = Exclude<WorkerOutcomeKind, "valid_result">;
 

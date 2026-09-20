@@ -4,23 +4,31 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import type { AdapterRef, CandidateClaim } from "../domain/contracts";
+import type {
+  AdapterRef,
+  CandidateClaim,
+  CoverageDefinition,
+} from "../domain/contracts";
 import { FileAuditEventStore } from "../storage/file-event-store";
 import type {
   AuditRunRequest,
   CandidateVerifierWorkerTask,
+  CoverageCriticWorkerTask,
+  HunterWorkerTask,
   IdSource,
+  RecordVerifierWorkerTask,
   WorkerAdapter,
   WorkerTask,
 } from "./contracts";
 import { AuditOrchestrator } from "./orchestrator";
 
 class DeterministicIds implements IdSource {
-  private sequence = 0;
+  private readonly sequences = new Map<string, number>();
 
   next(prefix: string): string {
-    this.sequence += 1;
-    return prefix + "-" + this.sequence;
+    const sequence = (this.sequences.get(prefix) ?? 0) + 1;
+    this.sequences.set(prefix, sequence);
+    return prefix + "-" + sequence;
   }
 }
 
@@ -44,11 +52,14 @@ class ScriptedWorker implements WorkerAdapter {
   }
 }
 
-function request(maxWorkerInvocations: number | null = 10): AuditRunRequest {
+function request(
+  maxWorkerInvocations: number | null = 10,
+  profile: AuditRunRequest["profile"] = "standard",
+): AuditRunRequest {
   return {
     runId: "run-1",
     sourceSnapshotId: "snapshot-1",
-    profile: "standard",
+    profile,
     scopePaths: ["src"],
     maxWorkerInvocations,
   };
@@ -83,6 +94,20 @@ const CLAIM: CandidateClaim = {
   conditions: ["Attacker has an authenticated tenant account."],
 };
 
+const VALIDATED_CLAIM: CandidateClaim = {
+  ...CLAIM,
+  description: "Independent candidate verification reconstructed the cross-tenant read.",
+  evidence: [
+    ...CLAIM.evidence,
+    {
+      file: "src/routes.ts",
+      line: 22,
+      scope: "getDocumentRoute",
+      description: "The route forwards the tenant actor and caller-selected document id.",
+    },
+  ],
+};
+
 const HUNTER_EVIDENCE = {
   reviewedPaths: ["src/documents.ts"],
   checks: [
@@ -95,11 +120,31 @@ const HUNTER_EVIDENCE = {
   ],
 };
 
+const COVERAGE_DEFINITION: CoverageDefinition = {
+  surface: "GET /documents/:id",
+  boundary: "tenant ownership",
+  subsystem: "documents",
+  attackClass: "Access control",
+  lifecycle: null,
+  startingPaths: ["src/documents.ts"],
+  methodologyRefs: ["ATTACK-CLASSES.md#Access control"],
+};
+
+const COVERAGE_DEFINITION_TWO: CoverageDefinition = {
+  surface: "POST /documents/export",
+  boundary: "tenant ownership",
+  subsystem: "documents-export",
+  attackClass: "Access control",
+  lifecycle: "asynchronous export",
+  startingPaths: ["src/export.ts"],
+  methodologyRefs: ["ATTACK-CLASSES.md#Access control"],
+};
+
 const RECON_ONE = {
   status: "ok",
   result: {
     kind: "recon_result",
-    coverageIds: ["coverage-1"],
+    coverageDefinitions: [COVERAGE_DEFINITION],
   },
 };
 
@@ -107,7 +152,7 @@ const RECON_TWO = {
   status: "ok",
   result: {
     kind: "recon_result",
-    coverageIds: ["coverage-1", "coverage-2"],
+    coverageDefinitions: [COVERAGE_DEFINITION, COVERAGE_DEFINITION_TWO],
   },
 };
 
@@ -135,6 +180,8 @@ const CONFIRMED = {
   result: {
     kind: "candidate_validation_result",
     verdict: "confirmed",
+    reason: "Independent candidate verifier reproduced the source-level boundary failure.",
+    validatedClaim: VALIDATED_CLAIM,
     evidenceRequirements: [],
   },
 };
@@ -155,7 +202,14 @@ test("valid candidate path reaches record_verification through persisted evidenc
     const candidates = Object.values(state.candidates);
     assert.equal(candidates.length, 1);
     assert.equal(candidates[0].verdict, "confirmed");
-    assert.deepEqual(candidates[0].claim, CLAIM);
+    assert.deepEqual(candidates[0].claim, VALIDATED_CLAIM);
+    assert.match(candidates[0].candidateValidationReason ?? "", /reproduced/);
+
+    const hunterTask = worker.tasks.find(
+      (task): task is HunterWorkerTask => task.kind === "hunter",
+    );
+    assert(hunterTask);
+    assert.deepEqual(hunterTask.definition, COVERAGE_DEFINITION);
 
     const verifierTask = worker.tasks.find(
       (task): task is CandidateVerifierWorkerTask => task.kind === "candidate_verifier",
@@ -274,6 +328,39 @@ test("oversized worker observation becomes malformed without poisoning durable s
   }
 });
 
+test("recon semantic aliases are malformed before coverage ids are allocated", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      {
+        status: "ok",
+        result: {
+          kind: "recon_result",
+          coverageDefinitions: [
+            COVERAGE_DEFINITION,
+            {
+              ...COVERAGE_DEFINITION,
+              startingPaths: ["src/alternate.ts"],
+            },
+          ],
+        },
+      },
+    ]);
+    const state = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(),
+    ).runThroughCandidateValidation(request());
+
+    assert.equal(state.status, "incomplete");
+    const recon = Object.values(state.assignments)[0];
+    assert.equal(recon.outcome?.kind, "malformed_result");
+    assert.deepEqual(Object.keys(state.coverageUnits), []);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("thrown recon provider failure is persisted and run becomes incomplete", async () => {
   const { root, store } = tempStore();
   try {
@@ -375,6 +462,8 @@ test("needs_validation opens durable finding handoff before disposition", async 
         result: {
           kind: "candidate_validation_result",
           verdict: "needs_validation",
+          reason: "Independent verifier requires deployment context.",
+          validatedClaim: VALIDATED_CLAIM,
           evidenceRequirements: [
             {
               kind: "deployment_fact",
@@ -445,6 +534,375 @@ test("budget exhaustion becomes explicit incomplete state without invoking worke
     assert.equal(state.budget.spentWorkerInvocations, 0);
     assert.match(state.terminalReason ?? "", /budget exhausted/);
     assert.equal(worker.tasks.length, 0);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+const CRITIC_CLEAN_ONE = {
+  status: "ok",
+  result: {
+    kind: "coverage_critic_result",
+    reviewedCoverageIds: ["coverage-1"],
+    reassignments: [],
+    stop: true,
+  },
+};
+
+const RECORD_ACCEPT = {
+  status: "ok",
+  result: {
+    kind: "record_verification_result",
+    disposition: "accept",
+    reason: "Independent final verifier reconstructed and accepted the retained claim.",
+  },
+};
+
+test("standard full audit requires two consecutive clean critic passes", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_COVERED,
+      CRITIC_CLEAN_ONE,
+      CRITIC_CLEAN_ONE,
+    ]);
+    const state = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(),
+    ).runFullAudit(request(4, "standard"));
+
+    assert.equal(state.status, "complete");
+    const critics = worker.tasks.filter(
+      (task): task is CoverageCriticWorkerTask => task.kind === "coverage_critic",
+    );
+    assert.equal(critics.length, 2);
+    assert.notEqual(critics[0].workerId, critics[1].workerId);
+    assert.deepEqual(critics[0].reopenableCoverageIds, ["coverage-1"]);
+    assert.equal(critics[0].coverageUnits[0].status, "covered");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("quick critic reassignment reopens coverage and requires a fresh hunter before clean stop", async () => {
+  const { root, store } = tempStore();
+  try {
+    const criticReassign = {
+      status: "ok",
+      result: {
+        kind: "coverage_critic_result",
+        reviewedCoverageIds: ["coverage-1"],
+        reassignments: [
+          { coverageId: "coverage-1", reason: "Review the alternate ownership path." },
+        ],
+        stop: false,
+      },
+    };
+    const secondHunter = {
+      status: "ok",
+      result: {
+        kind: "hunter_result",
+        resolution: "covered",
+        reviewedPaths: ["src/documents.ts", "src/alternate.ts"],
+        checks: [
+          {
+            invariant: "All document reads remain tenant scoped.",
+            method: "source",
+            result: "Reviewed both primary and alternate lookup paths.",
+            artifactRef: null,
+          },
+        ],
+      },
+    };
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_COVERED,
+      criticReassign,
+      secondHunter,
+      CRITIC_CLEAN_ONE,
+    ]);
+    const state = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(),
+    ).runFullAudit(request(5, "quick"));
+
+    assert.equal(state.status, "complete");
+    const hunters = worker.tasks.filter((task) => task.kind === "hunter");
+    assert.equal(hunters.length, 2);
+    assert.notEqual(hunters[0].workerId, hunters[1].workerId);
+    assert.deepEqual(state.coverageUnits["coverage-1"].reviewedPaths, [
+      "src/documents.ts",
+      "src/alternate.ts",
+    ]);
+    assert.equal(
+      state.coverageUnits["coverage-1"].checks[0].result,
+      "Reviewed both primary and alternate lookup paths.",
+    );
+
+    const events = store.readEvents("run-1");
+    assert(events.some((event) => event.type === "coverage_reopened"));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("critic can reopen candidate coverage without duplicating the existing root cause", async () => {
+  const { root, store } = tempStore();
+  try {
+    const criticReassign = {
+      status: "ok",
+      result: {
+        kind: "coverage_critic_result",
+        reviewedCoverageIds: ["coverage-1"],
+        reassignments: [
+          { coverageId: "coverage-1", reason: "Recheck the parallel lookup path." },
+        ],
+        stop: false,
+      },
+    };
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_CANDIDATE,
+      criticReassign,
+      HUNTER_CANDIDATE,
+      CRITIC_CLEAN_ONE,
+      CONFIRMED,
+      RECORD_ACCEPT,
+    ]);
+    const state = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(),
+    ).runFullAudit(request(7, "quick"));
+
+    assert.equal(state.status, "complete");
+    assert.equal(Object.values(state.candidates).length, 1);
+    const candidate = Object.values(state.candidates)[0];
+    assert.deepEqual(candidate.coverageIds, ["coverage-1"]);
+    assert.equal(state.coverageUnits["coverage-1"].status, "candidate");
+    assert.deepEqual(state.coverageUnits["coverage-1"].candidateIds, [candidate.candidateId]);
+
+    const hunters = worker.tasks.filter((task) => task.kind === "hunter");
+    assert.equal(hunters.length, 2);
+    assert.notEqual(hunters[0].workerId, hunters[1].workerId);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("critic clean-stop over blocked coverage is malformed and run becomes incomplete", async () => {
+  const { root, store } = tempStore();
+  try {
+    const blocked = {
+      status: "ok",
+      result: {
+        kind: "hunter_result",
+        resolution: "blocked",
+        ...HUNTER_EVIDENCE,
+        unresolved: ["deployment fact missing"],
+      },
+    };
+    const worker = new ScriptedWorker([RECON_ONE, blocked, CRITIC_CLEAN_ONE]);
+    const state = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(),
+    ).runFullAudit(request(3, "quick"));
+
+    assert.equal(state.status, "incomplete");
+    const critic = Object.values(state.assignments).find(
+      (assignment) => assignment.kind === "coverage_critic",
+    );
+    assert.equal(critic?.outcome?.kind, "malformed_result");
+    assert.equal(state.coverageUnits["coverage-1"].status, "blocked");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("critic provider failure is explicit incomplete state", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_COVERED,
+      { status: "error", kind: "provider_error", detail: "critic unavailable" },
+    ]);
+    const state = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(),
+    ).runFullAudit(request(3, "quick"));
+
+    assert.equal(state.status, "incomplete");
+    assert.match(state.terminalReason ?? "", /coverage critic ended with provider_error/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("critic budget exhaustion becomes incomplete before critic invocation", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([RECON_ONE, HUNTER_COVERED]);
+    const state = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(),
+    ).runFullAudit(request(2, "quick"));
+
+    assert.equal(state.status, "incomplete");
+    assert.match(state.terminalReason ?? "", /budget exhausted/);
+    assert.equal(worker.tasks.filter((task) => task.kind === "coverage_critic").length, 0);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("confirmed candidate passes independent final record verification and completes", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_CANDIDATE,
+      CRITIC_CLEAN_ONE,
+      CONFIRMED,
+      RECORD_ACCEPT,
+    ]);
+    const state = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(),
+    ).runFullAudit(request(5, "quick"));
+
+    assert.equal(state.status, "complete");
+    const candidate = Object.values(state.candidates)[0];
+    assert.equal(candidate.verdict, "confirmed");
+    assert(candidate.finalVerifierAssignmentId);
+    assert.match(candidate.finalVerificationReason ?? "", /accepted/);
+
+    const verifierTask = worker.tasks.find(
+      (task): task is RecordVerifierWorkerTask => task.kind === "record_verifier",
+    );
+    assert(verifierTask);
+    assert.equal(verifierTask.verdict, "confirmed");
+    assert.deepEqual(verifierTask.claim, VALIDATED_CLAIM);
+    assert.match(verifierTask.candidateValidationReason, /reproduced/);
+    assert.deepEqual(verifierTask.coverageIds, ["coverage-1"]);
+
+    const origin = state.assignments[candidate.originAssignmentId];
+    const candidateVerifier = state.assignments[candidate.candidateVerifierAssignmentId ?? ""];
+    const recordVerifier = state.assignments[candidate.finalVerifierAssignmentId ?? ""];
+    assert.notEqual(recordVerifier.workerId, origin.workerId);
+    assert.notEqual(recordVerifier.workerId, candidateVerifier.workerId);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("final record rejection converts retained candidate to rejected and still completes", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_CANDIDATE,
+      CRITIC_CLEAN_ONE,
+      CONFIRMED,
+      {
+        status: "ok",
+        result: {
+          kind: "record_verification_result",
+          disposition: "reject",
+          reason: "Independent reconstruction found the claimed boundary was not crossed.",
+        },
+      },
+    ]);
+    const state = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(),
+    ).runFullAudit(request(5, "quick"));
+
+    assert.equal(state.status, "complete");
+    const candidate = Object.values(state.candidates)[0];
+    assert.equal(candidate.verdict, "rejected");
+    assert.match(candidate.finalVerificationReason ?? "", /not crossed/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("final rejection of needs_validation closes its handoff evidence before completion", async () => {
+  const { root, store } = tempStore();
+  try {
+    const needsValidation = {
+      status: "ok",
+      result: {
+        kind: "candidate_validation_result",
+        verdict: "needs_validation",
+        reason: "Independent verifier requires deployment context.",
+        validatedClaim: VALIDATED_CLAIM,
+        evidenceRequirements: [
+          {
+            kind: "deployment_fact",
+            description: "Confirm production ingress behavior.",
+          },
+        ],
+      },
+    };
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_CANDIDATE,
+      CRITIC_CLEAN_ONE,
+      needsValidation,
+      {
+        status: "ok",
+        result: {
+          kind: "record_verification_result",
+          disposition: "reject",
+          reason: "Source-level claim does not survive final reconstruction.",
+        },
+      },
+    ]);
+    const state = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(),
+    ).runFullAudit(request(5, "quick"));
+
+    assert.equal(state.status, "complete");
+    assert.equal(Object.values(state.candidates)[0].verdict, "rejected");
+    const requirement = Object.values(state.evidenceRequirements)[0];
+    assert.equal(requirement.status, "resolved");
+    assert.match(requirement.resolution ?? "", /Final record verifier rejected/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("record verifier failure prevents a complete report", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_CANDIDATE,
+      CRITIC_CLEAN_ONE,
+      CONFIRMED,
+      { status: "error", kind: "timeout", detail: "final verifier deadline" },
+    ]);
+    const state = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(),
+    ).runFullAudit(request(5, "quick"));
+
+    assert.equal(state.status, "incomplete");
+    assert.match(state.terminalReason ?? "", /record verifier ended with timeout/);
+    assert.equal(Object.values(state.candidates)[0].finalVerifierAssignmentId, null);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

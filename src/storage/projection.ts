@@ -30,6 +30,11 @@ function cloneAssignment(value: WorkerAssignment): WorkerAssignment {
 function cloneCoverage(value: CoverageUnit): CoverageUnit {
   return {
     ...value,
+    definition: {
+      ...value.definition,
+      startingPaths: [...value.definition.startingPaths],
+      methodologyRefs: [...value.definition.methodologyRefs],
+    },
     candidateIds: [...value.candidateIds],
     reviewedPaths: [...value.reviewedPaths],
     checks: value.checks.map((check) => ({ ...check })),

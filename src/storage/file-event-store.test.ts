@@ -9,6 +9,7 @@ import {
   type AuditEvent,
   type CandidateClaim,
   type CoverageCheck,
+  type CoverageDefinition,
   type WorkerOutcome,
 } from "../domain/contracts";
 import { DomainTransitionError, replayAuditEvents } from "../domain/reducer";
@@ -29,6 +30,16 @@ const CLAIM: CandidateClaim = {
     { file: "src/a.ts", line: 2, scope: "sink", description: "Boundary failure." },
   ],
   conditions: [],
+};
+
+const COVERAGE_DEFINITION: CoverageDefinition = {
+  surface: "GET /documents/:id",
+  boundary: "tenant ownership",
+  subsystem: "documents",
+  attackClass: "Access control",
+  lifecycle: null,
+  startingPaths: ["src/a.ts"],
+  methodologyRefs: ["ATTACK-CLASSES.md#Access control"],
 };
 
 const CHECKS: readonly CoverageCheck[] = [
@@ -66,7 +77,11 @@ function confirmedLifecycle(): AuditEvent[] {
     }),
     auditEvent(2, { type: "phase_advanced", to: "reconnaissance" }),
     auditEvent(3, { type: "phase_advanced", to: "coverage_planning" }),
-    auditEvent(4, { type: "coverage_unit_registered", coverageId: "coverage-1" }),
+    auditEvent(4, {
+      type: "coverage_unit_registered",
+      coverageId: "coverage-1",
+      definition: COVERAGE_DEFINITION,
+    }),
     auditEvent(5, { type: "phase_advanced", to: "hunting" }),
     auditEvent(6, {
       type: "assignment_created",
@@ -116,6 +131,8 @@ function confirmedLifecycle(): AuditEvent[] {
       candidateId: "candidate-1",
       verdict: "confirmed",
       verifierAssignmentId: "candidate-verify-1",
+      reason: "Independent verifier reconstructed the retained claim.",
+      validatedClaim: CLAIM,
     }),
     auditEvent(16, { type: "phase_advanced", to: "record_verification" }),
     auditEvent(17, {
@@ -136,6 +153,7 @@ function confirmedLifecycle(): AuditEvent[] {
       type: "candidate_final_verified",
       candidateId: "candidate-1",
       verifierAssignmentId: "record-verify-1",
+      reason: "Independent final verification accepted the retained record.",
     }),
     auditEvent(21, { type: "phase_advanced", to: "reporting" }),
     auditEvent(22, { type: "run_completed" }),

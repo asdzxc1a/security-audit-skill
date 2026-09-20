@@ -1,4 +1,4 @@
-export const DOMAIN_SCHEMA_VERSION = 2 as const;
+export const DOMAIN_SCHEMA_VERSION = 3 as const;
 
 export type DomainSchemaVersion = typeof DOMAIN_SCHEMA_VERSION;
 
@@ -72,6 +72,16 @@ export type CoverageStatus =
   | "out_of_scope"
   | "not_applicable";
 
+export interface CoverageDefinition {
+  readonly surface: string;
+  readonly boundary: string;
+  readonly subsystem: string;
+  readonly attackClass: string;
+  readonly lifecycle: string | null;
+  readonly startingPaths: readonly string[];
+  readonly methodologyRefs: readonly string[];
+}
+
 export type CoverageCheckMethod = "source" | "local";
 
 export interface CoverageCheck {
@@ -83,6 +93,7 @@ export interface CoverageCheck {
 
 export interface CoverageUnit {
   readonly coverageId: string;
+  readonly definition: CoverageDefinition;
   readonly status: CoverageStatus;
   readonly assignmentId: string | null;
   readonly candidateIds: readonly string[];
@@ -119,8 +130,10 @@ export interface Candidate {
   readonly originWorkerId: string;
   readonly claim: CandidateClaim;
   readonly verdict: CandidateVerdict;
+  readonly candidateValidationReason: string | null;
   readonly candidateVerifierAssignmentId: string | null;
   readonly finalVerifierAssignmentId: string | null;
+  readonly finalVerificationReason: string | null;
 }
 
 export type EvidenceRequirementKind =
@@ -187,6 +200,7 @@ export interface PhaseAdvancedEvent extends EventBase<"phase_advanced"> {
 
 export interface CoverageUnitRegisteredEvent extends EventBase<"coverage_unit_registered"> {
   readonly coverageId: string;
+  readonly definition: CoverageDefinition;
 }
 
 export interface AssignmentCreatedEvent extends EventBase<"assignment_created"> {
@@ -222,6 +236,12 @@ export interface CoverageRequeuedEvent extends EventBase<"coverage_requeued"> {
   readonly reason: string;
 }
 
+export interface CoverageReopenedEvent extends EventBase<"coverage_reopened"> {
+  readonly coverageId: string;
+  readonly criticAssignmentId: string;
+  readonly reason: string;
+}
+
 export interface CoverageClassifiedEvent extends EventBase<"coverage_classified"> {
   readonly coverageId: string;
   readonly status: "deferred" | "out_of_scope" | "not_applicable";
@@ -246,11 +266,20 @@ export interface CandidateDispositionRecordedEvent extends EventBase<"candidate_
   readonly candidateId: string;
   readonly verdict: Exclude<CandidateVerdict, "unvalidated">;
   readonly verifierAssignmentId: string;
+  readonly reason: string;
+  readonly validatedClaim: CandidateClaim | null;
 }
 
 export interface CandidateFinalVerifiedEvent extends EventBase<"candidate_final_verified"> {
   readonly candidateId: string;
   readonly verifierAssignmentId: string;
+  readonly reason: string;
+}
+
+export interface CandidateFinalRejectedEvent extends EventBase<"candidate_final_rejected"> {
+  readonly candidateId: string;
+  readonly verifierAssignmentId: string;
+  readonly reason: string;
 }
 
 export interface EvidenceRequirementOpenedEvent extends EventBase<"evidence_requirement_opened"> {
@@ -289,11 +318,13 @@ export type AuditEvent =
   | AssignmentCompletedEvent
   | CoverageResolvedEvent
   | CoverageRequeuedEvent
+  | CoverageReopenedEvent
   | CoverageClassifiedEvent
   | CandidateRegisteredEvent
   | CandidateLinkedToCoverageEvent
   | CandidateDispositionRecordedEvent
   | CandidateFinalVerifiedEvent
+  | CandidateFinalRejectedEvent
   | EvidenceRequirementOpenedEvent
   | EvidenceRequirementResolvedEvent
   | RunCompletedEvent
