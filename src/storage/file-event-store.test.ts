@@ -7,6 +7,8 @@ import test from "node:test";
 import {
   DOMAIN_SCHEMA_VERSION,
   type AuditEvent,
+  type CandidateClaim,
+  type CoverageCheck,
   type WorkerOutcome,
 } from "../domain/contracts";
 import { DomainTransitionError, replayAuditEvents } from "../domain/reducer";
@@ -14,6 +16,31 @@ import { EventStoreError, FileAuditEventStore } from "./file-event-store";
 import { projectAuditState } from "./projection";
 
 const VALID: WorkerOutcome = { kind: "valid_result", detail: null, adapter: null };
+
+const CLAIM: CandidateClaim = {
+  title: "Stored candidate",
+  description: "Substantive candidate claim survives replay.",
+  claimedRootCause: "A trust-boundary control is missing.",
+  intendedBehavior: "The boundary must remain enforced.",
+  trace: [
+    { file: "src/a.ts", line: 1, scope: "entry", description: "Entry point." },
+  ],
+  evidence: [
+    { file: "src/a.ts", line: 2, scope: "sink", description: "Boundary failure." },
+  ],
+  conditions: [],
+};
+
+const CHECKS: readonly CoverageCheck[] = [
+  {
+    invariant: "Boundary must hold.",
+    method: "source",
+    result: "Source review completed.",
+    artifactRef: null,
+  },
+];
+
+const REVIEWED = ["src/a.ts"] as const;
 
 function auditEvent(
   sequence: number,
@@ -57,6 +84,7 @@ function confirmedLifecycle(): AuditEvent[] {
       fingerprint: "root-cause-1",
       coverageId: "coverage-1",
       originAssignmentId: "hunt-1",
+      claim: CLAIM,
     }),
     auditEvent(10, {
       type: "coverage_resolved",
@@ -64,6 +92,8 @@ function confirmedLifecycle(): AuditEvent[] {
       assignmentId: "hunt-1",
       resolution: "candidate",
       candidateIds: ["candidate-1"],
+      reviewedPaths: REVIEWED,
+      checks: CHECKS,
       unresolved: [],
     }),
     auditEvent(11, { type: "phase_advanced", to: "candidate_validation" }),
@@ -215,6 +245,30 @@ test("exact append retry is idempotent but event-id reuse with different content
     } as AuditEvent;
     expectStoreCode(() => store.append(changed), "duplicate_event_id");
     assert.equal(store.readEvents("run-1").length, 1);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+
+test("oversized reducer-accepted envelope is rejected before durable publication", () => {
+  const root = tempRoot();
+  try {
+    const store = new FileAuditEventStore(root);
+    const oversized = {
+      ...auditEvent(1, {
+        type: "run_created",
+        sourceSnapshotId: "snapshot-1",
+        profile: "standard",
+        scopePaths: ["src"],
+        maxWorkerInvocations: 1,
+      }),
+      ignoredPadding: "x".repeat(1024 * 1024),
+    } as unknown as AuditEvent;
+
+    expectStoreCode(() => store.append(oversized), "event_too_large");
+    assert.deepEqual(store.readEvents("run-1"), []);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

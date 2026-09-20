@@ -5,8 +5,11 @@ import {
   type AuditEvent,
   type AuditRunState,
   type Candidate,
+  type CandidateClaim,
+  type CoverageCheck,
   type CoverageUnit,
   type EvidenceRequirement,
+  type SourceReference,
   type WorkerAssignment,
 } from "./contracts";
 
@@ -57,9 +60,162 @@ function fail(code: TransitionErrorCode, message: string): never {
   throw new DomainTransitionError(code, message);
 }
 
-function requireText(value: string, label: string): void {
-  if (typeof value !== "string" || value.trim() !== value || value.length === 0) {
-    fail("invalid_event", label + " must be non-empty trimmed text");
+function isObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+const MAX_TEXT_BYTES = 16 * 1024;
+const MAX_ID_BYTES = 512;
+const MAX_LIST_ITEMS = 256;
+const MAX_SOURCE_REFERENCES = 64;
+const MAX_COVERAGE_CHECKS = 64;
+
+function utf8Bytes(value: string): number {
+  return Buffer.byteLength(value, "utf8");
+}
+
+function requireText(
+  value: string,
+  label: string,
+  maxBytes: number = MAX_TEXT_BYTES,
+): void {
+  if (
+    typeof value !== "string" ||
+    value.trim() !== value ||
+    value.length === 0 ||
+    utf8Bytes(value) > maxBytes
+  ) {
+    fail("invalid_event", label + " must be bounded non-empty trimmed text");
+  }
+}
+
+function requireId(value: string, label: string): void {
+  requireText(value, label, MAX_ID_BYTES);
+}
+
+function requireBoundedList<T>(
+  value: readonly T[],
+  label: string,
+  maxItems: number = MAX_LIST_ITEMS,
+): void {
+  if (!Array.isArray(value) || value.length > maxItems) {
+    fail("invalid_event", label + " exceeds item limit");
+  }
+}
+
+function requireSafeRelativePath(value: string, label: string): void {
+  requireText(value, label, 4096);
+  if (
+    value.startsWith("/") ||
+    value.includes("\\") ||
+    /^[A-Za-z]:/.test(value) ||
+    value.split("/").some((segment) => segment === "" || segment === "." || segment === "..")
+  ) {
+    fail("invalid_event", label + " must be a safe repository-relative path");
+  }
+}
+
+function validateSourceReference(reference: SourceReference, label: string): void {
+  if (!isObject(reference)) fail("invalid_candidate", label + " must be an object");
+  requireSafeRelativePath(reference.file, label + ".file");
+  if (
+    reference.line !== null &&
+    (!Number.isInteger(reference.line) || reference.line < 1 || reference.line > 10_000_000)
+  ) {
+    fail("invalid_event", label + ".line must be null or a positive bounded integer");
+  }
+  requireText(reference.scope, label + ".scope", 4096);
+  requireText(reference.description, label + ".description");
+}
+
+function validateCandidateClaim(claim: CandidateClaim): void {
+  if (!isObject(claim)) fail("invalid_candidate", "candidate claim must be an object");
+  requireText(claim.title, "claim.title", 4096);
+  requireText(claim.description, "claim.description");
+  requireText(claim.claimedRootCause, "claim.claimedRootCause");
+  requireText(claim.intendedBehavior, "claim.intendedBehavior");
+  requireBoundedList(claim.trace, "claim.trace", MAX_SOURCE_REFERENCES);
+  requireBoundedList(claim.evidence, "claim.evidence", MAX_SOURCE_REFERENCES);
+  requireBoundedList(claim.conditions, "claim.conditions", 64);
+  if (claim.trace.length === 0 || claim.evidence.length === 0) {
+    fail("invalid_candidate", "candidate claim requires trace and evidence");
+  }
+  claim.trace.forEach((entry, index) =>
+    validateSourceReference(entry, "claim.trace[" + index + "]"),
+  );
+  claim.evidence.forEach((entry, index) =>
+    validateSourceReference(entry, "claim.evidence[" + index + "]"),
+  );
+  claim.conditions.forEach((condition, index) =>
+    requireText(condition, "claim.conditions[" + index + "]"),
+  );
+}
+
+function validateCoverageEvidence(
+  reviewedPaths: readonly string[],
+  checks: readonly CoverageCheck[],
+): void {
+  requireBoundedList(reviewedPaths, "reviewedPaths", MAX_LIST_ITEMS);
+  requireBoundedList(checks, "checks", MAX_COVERAGE_CHECKS);
+  if (reviewedPaths.length === 0 || checks.length === 0) {
+    fail("invalid_evidence", "resolved coverage requires reviewed paths and checks");
+  }
+  if (new Set(reviewedPaths).size !== reviewedPaths.length) {
+    fail("invalid_evidence", "reviewedPaths must be unique");
+  }
+  reviewedPaths.forEach((reviewedPath, index) =>
+    requireSafeRelativePath(reviewedPath, "reviewedPaths[" + index + "]"),
+  );
+  checks.forEach((check, index) => {
+    if (!isObject(check)) fail("invalid_evidence", "coverage check must be an object");
+    requireText(check.invariant, "checks[" + index + "].invariant");
+    requireText(check.result, "checks[" + index + "].result");
+    if (check.method !== "source" && check.method !== "local") {
+      fail("invalid_evidence", "coverage check method is invalid");
+    }
+    if (check.method === "source" && check.artifactRef !== null) {
+      fail("invalid_evidence", "source coverage check must not carry artifactRef");
+    }
+    if (check.method === "local") {
+      if (check.artifactRef === null) {
+        fail("invalid_evidence", "local coverage check requires artifactRef");
+      }
+      requireText(check.artifactRef, "checks[" + index + "].artifactRef", 4096);
+    }
+  });
+}
+
+function validateWorkerOutcome(outcome: WorkerAssignment["outcome"]): void {
+  if (!isObject(outcome)) fail("invalid_assignment", "assignment outcome must be an object");
+  const kinds = new Set([
+    "valid_result",
+    "malformed_result",
+    "model_refusal",
+    "provider_error",
+    "timeout",
+    "permission_denied",
+    "sandbox_failure",
+    "cancelled",
+  ]);
+  if (typeof outcome.kind !== "string" || !kinds.has(outcome.kind)) {
+    fail("invalid_assignment", "assignment outcome kind is invalid");
+  }
+  if (outcome.detail !== null) requireText(outcome.detail, "outcome.detail", 4096);
+  if (outcome.adapter !== null) {
+    if (!isObject(outcome.adapter)) fail("invalid_assignment", "outcome adapter must be an object");
+    requireText(outcome.adapter.adapter, "outcome.adapter.adapter", MAX_ID_BYTES);
+    if (outcome.adapter.model !== null) {
+      requireText(outcome.adapter.model, "outcome.adapter.model", MAX_ID_BYTES);
+    }
+    let serialized: string;
+    try {
+      serialized = JSON.stringify(outcome.adapter.metadata);
+    } catch {
+      fail("invalid_assignment", "outcome adapter metadata must be JSON-serializable");
+    }
+    if (serialized === undefined || Buffer.byteLength(serialized, "utf8") > 32 * 1024) {
+      fail("invalid_assignment", "outcome adapter metadata exceeds byte limit");
+    }
   }
 }
 
@@ -224,9 +380,19 @@ function verifyCompletion(state: AuditRunState): void {
 function createRun(event: Extract<AuditEvent, { type: "run_created" }>): AuditRunState {
   if (event.schemaVersion !== DOMAIN_SCHEMA_VERSION) fail("invalid_event", "unsupported event schema version");
   if (event.sequence !== 1) fail("invalid_sequence", "run_created must have sequence 1");
-  requireText(event.eventId, "eventId");
-  requireText(event.runId, "runId");
-  requireText(event.sourceSnapshotId, "sourceSnapshotId");
+  requireId(event.eventId, "eventId");
+  requireId(event.runId, "runId");
+  requireId(event.sourceSnapshotId, "sourceSnapshotId");
+  if (event.profile !== "quick" && event.profile !== "standard" && event.profile !== "deep") {
+    fail("invalid_event", "profile is invalid");
+  }
+  requireBoundedList(event.scopePaths, "scopePaths", 128);
+  if (new Set(event.scopePaths).size !== event.scopePaths.length) {
+    fail("invalid_event", "scopePaths must be unique");
+  }
+  event.scopePaths.forEach((scopePath, index) =>
+    requireSafeRelativePath(scopePath, "scopePaths[" + index + "]"),
+  );
   if (
     event.maxWorkerInvocations !== null &&
     (!Number.isInteger(event.maxWorkerInvocations) || event.maxWorkerInvocations < 0)
@@ -261,7 +427,7 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
   }
 
   if (event.schemaVersion !== DOMAIN_SCHEMA_VERSION) fail("invalid_event", "unsupported event schema version");
-  requireText(event.eventId, "eventId");
+  requireId(event.eventId, "eventId");
   if (event.runId !== state.runId) fail("run_mismatch", "event runId does not match state");
   if (isTerminal(state)) fail("terminal_run", "terminal run cannot accept more events");
   if (event.sequence !== state.sequence + 1) {
@@ -286,13 +452,15 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
 
     case "coverage_unit_registered": {
       if (state.status !== "coverage_planning") fail("invalid_phase", "coverage units register during coverage planning");
-      requireText(event.coverageId, "coverageId");
+      requireId(event.coverageId, "coverageId");
       if (state.coverageUnits[event.coverageId]) fail("invalid_coverage", "duplicate coverage unit");
       next.coverageUnits[event.coverageId] = {
         coverageId: event.coverageId,
         status: "planned",
         assignmentId: null,
         candidateIds: [],
+        reviewedPaths: [],
+        checks: [],
         unresolved: [],
       };
       return next;
@@ -302,8 +470,8 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       if (ASSIGNMENT_PHASE[event.kind] !== state.status) {
         fail("invalid_phase", event.kind + " assignment is not allowed during " + state.status);
       }
-      requireText(event.assignmentId, "assignmentId");
-      requireText(event.workerId, "workerId");
+      requireId(event.assignmentId, "assignmentId");
+      requireId(event.workerId, "workerId");
       if (state.assignments[event.assignmentId]) fail("invalid_assignment", "duplicate assignment");
       if (new Set(event.coverageIds).size !== event.coverageIds.length) {
         fail("invalid_assignment", "assignment coverageIds must be unique");
@@ -407,6 +575,7 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
     case "assignment_completed": {
       const assignment = assignmentOrFail(state, event.assignmentId);
       if (assignment.status !== "in_progress") fail("invalid_assignment", "assignment is not in progress");
+      validateWorkerOutcome(event.outcome);
       const status =
         event.outcome.kind === "valid_result"
           ? "succeeded"
@@ -424,8 +593,8 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
 
     case "candidate_registered": {
       if (state.status !== "hunting") fail("invalid_phase", "candidates register during hunting");
-      requireText(event.candidateId, "candidateId");
-      requireText(event.fingerprint, "fingerprint");
+      requireId(event.candidateId, "candidateId");
+      requireText(event.fingerprint, "fingerprint", 2048);
       if (state.candidates[event.candidateId]) fail("invalid_candidate", "duplicate candidateId");
       if (Object.values(state.candidates).some((candidate) => candidate.fingerprint === event.fingerprint)) {
         fail("invalid_candidate", "duplicate candidate fingerprint");
@@ -440,15 +609,40 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       if (coverage.assignmentId !== assignment.assignmentId || coverage.status !== "in_progress") {
         fail("invalid_coverage", "candidate coverage is not active under origin assignment");
       }
+      validateCandidateClaim(event.claim);
       next.candidates[event.candidateId] = {
         candidateId: event.candidateId,
         fingerprint: event.fingerprint,
-        coverageId: event.coverageId,
+        originCoverageId: event.coverageId,
+        coverageIds: [event.coverageId],
         originAssignmentId: assignment.assignmentId,
         originWorkerId: assignment.workerId,
+        claim: structuredClone(event.claim),
         verdict: "unvalidated",
         candidateVerifierAssignmentId: null,
         finalVerifierAssignmentId: null,
+      };
+      return next;
+    }
+
+    case "candidate_linked_to_coverage": {
+      if (state.status !== "hunting") fail("invalid_phase", "candidate links occur during hunting");
+      const candidate = candidateOrFail(state, event.candidateId);
+      const coverage = coverageOrFail(state, event.coverageId);
+      const assignment = assignmentOrFail(state, event.assignmentId);
+      requireSucceededValidAssignment(assignment);
+      if (assignment.kind !== "hunter" || !assignment.coverageIds.includes(event.coverageId)) {
+        fail("invalid_assignment", "candidate coverage link requires owning hunter assignment");
+      }
+      if (coverage.assignmentId !== assignment.assignmentId || coverage.status !== "in_progress") {
+        fail("invalid_coverage", "candidate link coverage is not active under assignment");
+      }
+      if (candidate.coverageIds.includes(event.coverageId)) {
+        fail("invalid_candidate", "candidate is already linked to coverage unit");
+      }
+      next.candidates[event.candidateId] = {
+        ...candidate,
+        coverageIds: [...candidate.coverageIds, event.coverageId],
       };
       return next;
     }
@@ -464,6 +658,11 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       if (new Set(event.candidateIds).size !== event.candidateIds.length) {
         fail("invalid_coverage", "coverage candidateIds must be unique");
       }
+      validateCoverageEvidence(event.reviewedPaths, event.checks);
+      requireBoundedList(event.unresolved, "unresolved", 64);
+      event.unresolved.forEach((reason, index) =>
+        requireText(reason, "unresolved[" + index + "]"),
+      );
       if (event.resolution === "covered") {
         if (event.candidateIds.length !== 0 || event.unresolved.length !== 0) {
           fail("invalid_coverage", "covered unit cannot carry candidates or unresolved blockers");
@@ -472,8 +671,8 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
         if (event.candidateIds.length === 0) fail("invalid_coverage", "candidate coverage needs candidate ids");
         for (const candidateId of event.candidateIds) {
           const candidate = candidateOrFail(state, candidateId);
-          if (candidate.coverageId !== event.coverageId) {
-            fail("invalid_candidate", "candidate belongs to different coverage unit");
+          if (!candidate.coverageIds.includes(event.coverageId)) {
+            fail("invalid_candidate", "candidate is not linked to coverage unit");
           }
         }
       } else if (event.candidateIds.length !== 0 || event.unresolved.length === 0) {
@@ -483,6 +682,8 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
         ...coverage,
         status: event.resolution,
         candidateIds: [...event.candidateIds],
+        reviewedPaths: [...event.reviewedPaths],
+        checks: event.checks.map((check) => ({ ...check })),
         unresolved: [...event.unresolved],
       };
       return next;
@@ -504,6 +705,8 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
         status: "planned",
         assignmentId: null,
         candidateIds: [],
+        reviewedPaths: [],
+        checks: [],
         unresolved: [],
       };
       return next;
@@ -525,13 +728,15 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
         status: event.status,
         assignmentId: null,
         candidateIds: [],
+        reviewedPaths: [],
+        checks: [],
         unresolved: [event.reason],
       };
       return next;
     }
 
     case "evidence_requirement_opened": {
-      requireText(event.requirementId, "requirementId");
+      requireId(event.requirementId, "requirementId");
       requireText(event.description, "description");
       if (state.evidenceRequirements[event.requirementId]) fail("invalid_evidence", "duplicate evidence requirement");
       if (event.candidateId !== null) candidateOrFail(state, event.candidateId);
@@ -657,6 +862,14 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       next.status = "cancelled";
       next.terminalReason = event.reason;
       return next;
+    }
+
+    default: {
+      const unexpected: never = event;
+      return fail(
+        "invalid_event",
+        "unsupported event type " + String((unexpected as { type?: unknown }).type),
+      );
     }
   }
 }

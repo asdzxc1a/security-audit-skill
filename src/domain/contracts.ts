@@ -1,4 +1,4 @@
-export const DOMAIN_SCHEMA_VERSION = 1 as const;
+export const DOMAIN_SCHEMA_VERSION = 2 as const;
 
 export type DomainSchemaVersion = typeof DOMAIN_SCHEMA_VERSION;
 
@@ -72,12 +72,40 @@ export type CoverageStatus =
   | "out_of_scope"
   | "not_applicable";
 
+export type CoverageCheckMethod = "source" | "local";
+
+export interface CoverageCheck {
+  readonly invariant: string;
+  readonly method: CoverageCheckMethod;
+  readonly result: string;
+  readonly artifactRef: string | null;
+}
+
 export interface CoverageUnit {
   readonly coverageId: string;
   readonly status: CoverageStatus;
   readonly assignmentId: string | null;
   readonly candidateIds: readonly string[];
+  readonly reviewedPaths: readonly string[];
+  readonly checks: readonly CoverageCheck[];
   readonly unresolved: readonly string[];
+}
+
+export interface SourceReference {
+  readonly file: string;
+  readonly line: number | null;
+  readonly scope: string;
+  readonly description: string;
+}
+
+export interface CandidateClaim {
+  readonly title: string;
+  readonly description: string;
+  readonly claimedRootCause: string;
+  readonly intendedBehavior: string;
+  readonly trace: readonly SourceReference[];
+  readonly evidence: readonly SourceReference[];
+  readonly conditions: readonly string[];
 }
 
 export type CandidateVerdict = "unvalidated" | "confirmed" | "needs_validation" | "rejected";
@@ -85,9 +113,11 @@ export type CandidateVerdict = "unvalidated" | "confirmed" | "needs_validation" 
 export interface Candidate {
   readonly candidateId: string;
   readonly fingerprint: string;
-  readonly coverageId: string;
+  readonly originCoverageId: string;
+  readonly coverageIds: readonly string[];
   readonly originAssignmentId: string;
   readonly originWorkerId: string;
+  readonly claim: CandidateClaim;
   readonly verdict: CandidateVerdict;
   readonly candidateVerifierAssignmentId: string | null;
   readonly finalVerifierAssignmentId: string | null;
@@ -181,6 +211,8 @@ export interface CoverageResolvedEvent extends EventBase<"coverage_resolved"> {
   readonly assignmentId: string;
   readonly resolution: "covered" | "candidate" | "blocked";
   readonly candidateIds: readonly string[];
+  readonly reviewedPaths: readonly string[];
+  readonly checks: readonly CoverageCheck[];
   readonly unresolved: readonly string[];
 }
 
@@ -201,6 +233,13 @@ export interface CandidateRegisteredEvent extends EventBase<"candidate_registere
   readonly fingerprint: string;
   readonly coverageId: string;
   readonly originAssignmentId: string;
+  readonly claim: CandidateClaim;
+}
+
+export interface CandidateLinkedToCoverageEvent extends EventBase<"candidate_linked_to_coverage"> {
+  readonly candidateId: string;
+  readonly coverageId: string;
+  readonly assignmentId: string;
 }
 
 export interface CandidateDispositionRecordedEvent extends EventBase<"candidate_disposition_recorded"> {
@@ -252,6 +291,7 @@ export type AuditEvent =
   | CoverageRequeuedEvent
   | CoverageClassifiedEvent
   | CandidateRegisteredEvent
+  | CandidateLinkedToCoverageEvent
   | CandidateDispositionRecordedEvent
   | CandidateFinalVerifiedEvent
   | EvidenceRequirementOpenedEvent
