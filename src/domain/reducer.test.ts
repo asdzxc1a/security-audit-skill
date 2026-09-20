@@ -617,6 +617,78 @@ test("blocked and deferred coverage prevent final completion", () => {
   }
 });
 
+
+
+test("coverage critic can reopen covered work only with an independent successful assignment", () => {
+  const scenario = new Scenario();
+  advanceToHunting(scenario);
+  scenario.apply({
+    type: "assignment_created",
+    assignmentId: "hunt-1",
+    kind: "hunter",
+    workerId: "hunter-a",
+    coverageIds: ["coverage-1"],
+    candidateId: null,
+  });
+  scenario.apply({ type: "assignment_started", assignmentId: "hunt-1" });
+  scenario.apply({ type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID });
+  scenario.apply({
+    type: "coverage_resolved",
+    coverageId: "coverage-1",
+    assignmentId: "hunt-1",
+    resolution: "covered",
+    candidateIds: [],
+    unresolved: [],
+  });
+  scenario.apply({
+    type: "assignment_created",
+    assignmentId: "critic-1",
+    kind: "coverage_critic",
+    workerId: "critic-a",
+    coverageIds: [],
+    candidateId: null,
+  });
+  scenario.apply({ type: "assignment_started", assignmentId: "critic-1" });
+  scenario.apply({ type: "assignment_completed", assignmentId: "critic-1", outcome: VALID });
+
+  const reopened = scenario.apply({
+    type: "coverage_reopened",
+    coverageId: "coverage-1",
+    criticAssignmentId: "critic-1",
+    reason: "control equivalence needs a fresh review",
+  });
+  assert.equal(reopened.coverageUnits["coverage-1"].status, "planned");
+  assert.equal(reopened.coverageUnits["coverage-1"].assignmentId, null);
+});
+
+test("coverage critic assignments require fresh workers", () => {
+  const scenario = new Scenario();
+  advanceToHunting(scenario);
+  scenario.apply({
+    type: "assignment_created",
+    assignmentId: "critic-1",
+    kind: "coverage_critic",
+    workerId: "critic-a",
+    coverageIds: [],
+    candidateId: null,
+  });
+  scenario.apply({ type: "assignment_started", assignmentId: "critic-1" });
+  scenario.apply({ type: "assignment_completed", assignmentId: "critic-1", outcome: VALID });
+
+  expectCode(
+    () =>
+      scenario.attempt({
+        type: "assignment_created",
+        assignmentId: "critic-2",
+        kind: "coverage_critic",
+        workerId: "critic-a",
+        coverageIds: [],
+        candidateId: null,
+      }),
+    "independence_violation",
+  );
+});
+
 test("incomplete run can terminate with unresolved work, then rejects later events", () => {
   const scenario = new Scenario();
   advanceToHunting(scenario);

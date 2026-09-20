@@ -480,6 +480,16 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
       if (event.kind === "hunter" && event.coverageIds.length === 0) {
         fail("invalid_assignment", "hunter assignment requires coverage units");
       }
+      if (
+        event.kind === "coverage_critic" &&
+        Object.values(state.assignments).some(
+          (assignment) =>
+            assignment.kind === "coverage_critic" &&
+            assignment.workerId === event.workerId,
+        )
+      ) {
+        fail("independence_violation", "each coverage critic assignment requires a fresh worker");
+      }
       if (event.kind !== "hunter" && event.coverageIds.length !== 0) {
         fail("invalid_assignment", event.kind + " assignment must not own coverage units");
       }
@@ -707,6 +717,35 @@ export function reduceAuditState(state: AuditRunState | null, event: AuditEvent)
         candidateIds: [],
         reviewedPaths: [],
         checks: [],
+        unresolved: [],
+      };
+      return next;
+    }
+
+    case "coverage_reopened": {
+      if (state.status !== "hunting") fail("invalid_phase", "coverage reopens during hunting");
+      requireText(event.reason, "reason");
+      const coverage = coverageOrFail(state, event.coverageId);
+      if (coverage.status !== "covered" || coverage.assignmentId === null) {
+        fail("invalid_coverage", "only covered assigned coverage may be reopened");
+      }
+      const critic = assignmentOrFail(state, event.criticAssignmentId);
+      requireSucceededValidAssignment(critic);
+      if (critic.kind !== "coverage_critic") {
+        fail("invalid_assignment", "coverage reopen requires a successful coverage critic");
+      }
+      const priorHunter = assignmentOrFail(state, coverage.assignmentId);
+      if (priorHunter.kind !== "hunter") {
+        fail("invalid_assignment", "reopened coverage must have been produced by a hunter");
+      }
+      if (critic.workerId === priorHunter.workerId) {
+        fail("independence_violation", "coverage critic must be independent from the prior hunter");
+      }
+      next.coverageUnits[event.coverageId] = {
+        ...coverage,
+        status: "planned",
+        assignmentId: null,
+        candidateIds: [],
         unresolved: [],
       };
       return next;
