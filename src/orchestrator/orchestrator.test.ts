@@ -4,7 +4,13 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import type { AdapterRef, CandidateClaim } from "../domain/contracts";
+import type {
+  AdapterRef,
+  AuditEvent,
+  AuditRunState,
+  CandidateClaim,
+} from "../domain/contracts";
+import type { AuditEventStore, AuditProjection } from "../storage/contracts";
 import { FileAuditEventStore } from "../storage/file-event-store";
 import type {
   AuditRunRequest,
@@ -16,12 +22,54 @@ import type {
 import { AuditOrchestrator } from "./orchestrator";
 
 class DeterministicIds implements IdSource {
-  private sequence = 0;
+  constructor(private sequence = 0) {}
 
   next(prefix: string): string {
     this.sequence += 1;
     return prefix + "-" + this.sequence;
   }
+}
+
+class CrashAfterAppendStore implements AuditEventStore {
+  private crashed = false;
+
+  constructor(
+    private readonly delegate: AuditEventStore,
+    private readonly shouldCrash: (event: AuditEvent) => boolean,
+  ) {}
+
+  append(event: AuditEvent): AuditRunState {
+    const state = this.delegate.append(event);
+    if (!this.crashed && this.shouldCrash(event)) {
+      this.crashed = true;
+      throw new Error("simulated orchestrator crash");
+    }
+    return state;
+  }
+
+  readEvents(runId: string): readonly AuditEvent[] {
+    return this.delegate.readEvents(runId);
+  }
+
+  loadState(runId: string): AuditRunState | null {
+    return this.delegate.loadState(runId);
+  }
+
+  loadProjection(runId: string): AuditProjection | null {
+    return this.delegate.loadProjection(runId);
+  }
+}
+
+function crashOnNthEvent(
+  type: AuditEvent["type"],
+  occurrence: number,
+): (event: AuditEvent) => boolean {
+  let count = 0;
+  return (event) => {
+    if (event.type !== type) return false;
+    count += 1;
+    return count === occurrence;
+  };
 }
 
 class ScriptedWorker implements WorkerAdapter {
@@ -156,6 +204,14 @@ test("valid candidate path reaches record_verification through persisted evidenc
     assert.equal(candidates.length, 1);
     assert.equal(candidates[0].verdict, "confirmed");
     assert.deepEqual(candidates[0].claim, CLAIM);
+
+    const hunterAssignment = Object.values(state.assignments).find(
+      (assignment) => assignment.kind === "hunter",
+    );
+    assert.deepEqual(hunterAssignment?.resultReceipt, {
+      schemaVersion: 3,
+      result: HUNTER_CANDIDATE.result,
+    });
 
     const verifierTask = worker.tasks.find(
       (task): task is CandidateVerifierWorkerTask => task.kind === "candidate_verifier",
@@ -887,7 +943,7 @@ test("partial coverage still validates and final-verifies useful findings before
     const candidate = Object.values(state.candidates)[0];
     assert.equal(candidate.verdict, "confirmed");
     assert.notEqual(candidate.finalVerifierAssignmentId, null);
-    assert.match(state.terminalReason ?? "", /coverage remains blocked or deferred/);
+    assert.match(state.terminalReason ?? "", /coverage coverage-blocked remains blocked/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -1017,6 +1073,421 @@ test("critic and record-verifier tasks receive canonical evidence-bearing state"
     assert.deepEqual(verifier.claim, CLAIM);
     assert.deepEqual(verifier.coverageIds, ["coverage-1"]);
     assert.equal(verifier.verdict, "confirmed");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+test("resume consumes completed hunter receipt without invoking hunter twice", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_COVERED,
+      CRITIC_CLEAN,
+      CRITIC_CLEAN,
+    ]);
+    const crashingStore = new CrashAfterAppendStore(
+      store,
+      crashOnNthEvent("assignment_completed", 2),
+    );
+
+    await assert.rejects(
+      () =>
+        new AuditOrchestrator(
+          crashingStore,
+          worker,
+          new DeterministicIds(),
+        ).runToTerminal(request(4)),
+      /simulated orchestrator crash/,
+    );
+
+    assert.equal(
+      worker.tasks.filter((task) => task.kind === "hunter").length,
+      1,
+    );
+    const before = store.loadState("run-1");
+    const hunter = Object.values(before?.assignments ?? {}).find(
+      (assignment) => assignment.kind === "hunter",
+    );
+    assert.equal(hunter?.status, "succeeded");
+    assert.notEqual(hunter?.resultReceipt, null);
+    assert.equal(before?.coverageUnits["coverage-1"].status, "in_progress");
+
+    const resumed = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(1000),
+    ).resumeToTerminal("run-1");
+
+    assert.equal(resumed.status, "complete");
+    assert.equal(resumed.coverageUnits["coverage-1"].status, "covered");
+    assert.equal(
+      worker.tasks.filter((task) => task.kind === "hunter").length,
+      1,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("resume executes a durably planned assignment from its original task receipt", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_COVERED,
+      CRITIC_CLEAN,
+      CRITIC_CLEAN,
+    ]);
+    const crashingStore = new CrashAfterAppendStore(
+      store,
+      crashOnNthEvent("assignment_created", 2),
+    );
+
+    await assert.rejects(
+      () =>
+        new AuditOrchestrator(
+          crashingStore,
+          worker,
+          new DeterministicIds(),
+        ).runToTerminal(request(4)),
+      /simulated orchestrator crash/,
+    );
+
+    assert.equal(worker.tasks.length, 1);
+    const plannedHunter = Object.values(store.loadState("run-1")?.assignments ?? {}).find(
+      (assignment) => assignment.kind === "hunter",
+    );
+    assert.equal(plannedHunter?.status, "planned");
+    assert.notEqual(plannedHunter?.taskReceipt, null);
+
+    const resumed = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(1000),
+    ).resumeToTerminal("run-1");
+
+    assert.equal(resumed.status, "complete");
+    const hunters = Object.values(resumed.assignments).filter(
+      (assignment) => assignment.kind === "hunter",
+    );
+    assert.equal(hunters.length, 1);
+    assert.equal(worker.tasks.filter((task) => task.kind === "hunter").length, 1);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("resume marks ambiguous in-progress work interrupted and retries with a fresh worker", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_COVERED,
+      CRITIC_CLEAN,
+      CRITIC_CLEAN,
+    ]);
+    const crashingStore = new CrashAfterAppendStore(
+      store,
+      crashOnNthEvent("assignment_started", 2),
+    );
+
+    await assert.rejects(
+      () =>
+        new AuditOrchestrator(
+          crashingStore,
+          worker,
+          new DeterministicIds(),
+        ).runToTerminal(request(5)),
+      /simulated orchestrator crash/,
+    );
+
+    const resumed = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(1000),
+    ).resumeToTerminal("run-1");
+
+    assert.equal(resumed.status, "complete");
+    const hunters = Object.values(resumed.assignments)
+      .filter((assignment) => assignment.kind === "hunter")
+      .sort((left, right) => left.createdSequence - right.createdSequence);
+    assert.equal(hunters.length, 2);
+    assert.equal(hunters[0].outcome?.kind, "orchestrator_interrupted");
+    assert.equal(hunters[1].status, "succeeded");
+    assert.notEqual(hunters[0].workerId, hunters[1].workerId);
+    assert.equal(worker.tasks.filter((task) => task.kind === "hunter").length, 1);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("resume consumes completed critic receipt and applies missing coverage without rerunning critic", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_COVERED,
+      {
+        status: "ok",
+        result: {
+          kind: "coverage_critic_result",
+          stop: false,
+          newCoverageIds: ["coverage-2"],
+          reassignCoverageIds: [],
+        },
+      },
+      HUNTER_COVERED,
+      CRITIC_CLEAN,
+    ]);
+    const crashingStore = new CrashAfterAppendStore(
+      store,
+      crashOnNthEvent("assignment_completed", 3),
+    );
+
+    await assert.rejects(
+      () =>
+        new AuditOrchestrator(
+          crashingStore,
+          worker,
+          new DeterministicIds(),
+        ).runToTerminal(request(5)),
+      /simulated orchestrator crash/,
+    );
+
+    assert.equal(
+      worker.tasks.filter((task) => task.kind === "coverage_critic").length,
+      1,
+    );
+
+    const resumed = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(1000),
+    ).resumeToTerminal("run-1");
+
+    assert.equal(resumed.status, "complete");
+    assert.equal(resumed.coverageUnits["coverage-2"].status, "covered");
+    assert.equal(
+      worker.tasks.filter((task) => task.kind === "coverage_critic").length,
+      2,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("resume consumes completed candidate-verifier receipt without re-verifying candidate", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_CANDIDATE,
+      CRITIC_CLEAN,
+      CRITIC_CLEAN,
+      CONFIRMED,
+      RECORD_VERIFIED,
+    ]);
+    const crashingStore = new CrashAfterAppendStore(
+      store,
+      crashOnNthEvent("assignment_completed", 5),
+    );
+
+    await assert.rejects(
+      () =>
+        new AuditOrchestrator(
+          crashingStore,
+          worker,
+          new DeterministicIds(),
+        ).runToTerminal(request(6)),
+      /simulated orchestrator crash/,
+    );
+
+    assert.equal(
+      worker.tasks.filter((task) => task.kind === "candidate_verifier").length,
+      1,
+    );
+    assert.equal(Object.values(store.loadState("run-1")?.candidates ?? {})[0]?.verdict, "unvalidated");
+
+    const resumed = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(1000),
+    ).resumeToTerminal("run-1");
+
+    assert.equal(resumed.status, "complete");
+    assert.equal(Object.values(resumed.candidates)[0].verdict, "confirmed");
+    assert.notEqual(Object.values(resumed.candidates)[0].finalVerifierAssignmentId, null);
+    assert.equal(
+      worker.tasks.filter((task) => task.kind === "candidate_verifier").length,
+      1,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+test("resume preserves critic round from durable task receipt after interruption", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_COVERED,
+      CRITIC_CLEAN,
+      CRITIC_CLEAN,
+    ]);
+    const crashingStore = new CrashAfterAppendStore(
+      store,
+      crashOnNthEvent("assignment_started", 3),
+    );
+
+    await assert.rejects(
+      () =>
+        new AuditOrchestrator(
+          crashingStore,
+          worker,
+          new DeterministicIds(),
+        ).runToTerminal(request(5)),
+      /simulated orchestrator crash/,
+    );
+
+    const resumed = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(1000),
+    ).resumeToTerminal("run-1");
+
+    assert.equal(resumed.status, "complete");
+    const critics = Object.values(resumed.assignments)
+      .filter((assignment) => assignment.kind === "coverage_critic")
+      .sort((left, right) => left.createdSequence - right.createdSequence);
+    assert.equal(critics.length, 3);
+    assert.equal(critics[0].outcome?.kind, "orchestrator_interrupted");
+
+    const rounds = critics.map((assignment) => {
+      const receipt = assignment.taskReceipt as {
+        schemaVersion: number;
+        task: { kind: string; round?: string };
+      };
+      return receipt.task.round;
+    });
+    assert.deepEqual(rounds, ["post_wave", "post_wave", "final_clean"]);
+
+    const executedCriticRounds = worker.tasks
+      .filter((task) => task.kind === "coverage_critic")
+      .map((task) => (task.kind === "coverage_critic" ? task.round : null));
+    assert.deepEqual(executedCriticRounds, ["post_wave", "final_clean"]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("resume reconstructs durable incomplete reason after critic failure completion", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_COVERED,
+      {
+        status: "error",
+        kind: "provider_error",
+        detail: "critic provider unavailable",
+      },
+    ]);
+    const crashingStore = new CrashAfterAppendStore(
+      store,
+      crashOnNthEvent("assignment_completed", 3),
+    );
+
+    await assert.rejects(
+      () =>
+        new AuditOrchestrator(
+          crashingStore,
+          worker,
+          new DeterministicIds(),
+        ).runToTerminal({ ...request(3), profile: "quick" }),
+      /simulated orchestrator crash/,
+    );
+
+    assert.deepEqual(store.loadState("run-1")?.incompleteReasons, []);
+
+    const resumed = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(1000),
+    ).resumeToTerminal("run-1");
+
+    assert.equal(resumed.status, "incomplete");
+    assert.deepEqual(resumed.incompleteReasons, [
+      "post-wave coverage critic ended with provider_error",
+    ]);
+    assert.match(
+      resumed.terminalReason ?? "",
+      /post-wave coverage critic ended with provider_error/,
+    );
+    assert.equal(
+      worker.tasks.filter((task) => task.kind === "coverage_critic").length,
+      1,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+
+test("resume consumes completed final-verifier receipt without re-running final verifier", async () => {
+  const { root, store } = tempStore();
+  try {
+    const worker = new ScriptedWorker([
+      RECON_ONE,
+      HUNTER_CANDIDATE,
+      CRITIC_CLEAN,
+      CRITIC_CLEAN,
+      CONFIRMED,
+      RECORD_VERIFIED,
+    ]);
+    const crashingStore = new CrashAfterAppendStore(
+      store,
+      crashOnNthEvent("assignment_completed", 6),
+    );
+
+    await assert.rejects(
+      () =>
+        new AuditOrchestrator(
+          crashingStore,
+          worker,
+          new DeterministicIds(),
+        ).runToTerminal(request(6)),
+      /simulated orchestrator crash/,
+    );
+
+    assert.equal(
+      worker.tasks.filter((task) => task.kind === "record_verifier").length,
+      1,
+    );
+    const beforeCandidate = Object.values(
+      store.loadState("run-1")?.candidates ?? {},
+    )[0];
+    assert.equal(beforeCandidate?.finalVerifierAssignmentId, null);
+
+    const resumed = await new AuditOrchestrator(
+      store,
+      worker,
+      new DeterministicIds(1000),
+    ).resumeToTerminal("run-1");
+
+    assert.equal(resumed.status, "complete");
+    assert.notEqual(
+      Object.values(resumed.candidates)[0].finalVerifierAssignmentId,
+      null,
+    );
+    assert.equal(
+      worker.tasks.filter((task) => task.kind === "record_verifier").length,
+      1,
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

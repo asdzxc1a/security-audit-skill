@@ -37,6 +37,7 @@ const KNOWN_EVENT_TYPES = new Set([
   "candidate_final_verified",
   "evidence_requirement_opened",
   "evidence_requirement_resolved",
+  "run_incomplete_reason_recorded",
   "run_completed",
   "run_marked_incomplete",
   "run_failed",

@@ -16,6 +16,7 @@ import { EventStoreError, FileAuditEventStore } from "./file-event-store";
 import { projectAuditState } from "./projection";
 
 const VALID: WorkerOutcome = { kind: "valid_result", detail: null, adapter: null };
+const TASK_RECEIPT = { schemaVersion: 1, task: { kind: "test_task" } } as const;
 
 const CLAIM: CandidateClaim = {
   title: "Stored candidate",
@@ -75,9 +76,10 @@ function confirmedLifecycle(): AuditEvent[] {
       workerId: "hunter-a",
       coverageIds: ["coverage-1"],
       candidateId: null,
+      taskReceipt: TASK_RECEIPT,
     }),
     auditEvent(7, { type: "assignment_started", assignmentId: "hunt-1" }),
-    auditEvent(8, { type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID }),
+    auditEvent(8, { type: "assignment_completed", assignmentId: "hunt-1", outcome: VALID, resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } } }),
     auditEvent(9, {
       type: "candidate_registered",
       candidateId: "candidate-1",
@@ -104,12 +106,14 @@ function confirmedLifecycle(): AuditEvent[] {
       workerId: "verifier-a",
       coverageIds: [],
       candidateId: "candidate-1",
+      taskReceipt: TASK_RECEIPT,
     }),
     auditEvent(13, { type: "assignment_started", assignmentId: "candidate-verify-1" }),
     auditEvent(14, {
       type: "assignment_completed",
       assignmentId: "candidate-verify-1",
       outcome: VALID,
+    resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } },
     }),
     auditEvent(15, {
       type: "candidate_disposition_recorded",
@@ -125,12 +129,14 @@ function confirmedLifecycle(): AuditEvent[] {
       workerId: "verifier-b",
       coverageIds: [],
       candidateId: "candidate-1",
+      taskReceipt: TASK_RECEIPT,
     }),
     auditEvent(18, { type: "assignment_started", assignmentId: "record-verify-1" }),
     auditEvent(19, {
       type: "assignment_completed",
       assignmentId: "record-verify-1",
       outcome: VALID,
+    resultReceipt: { schemaVersion: 1, result: { kind: "test_result" } },
     }),
     auditEvent(20, {
       type: "candidate_final_verified",
@@ -184,6 +190,14 @@ test("accepted event stream survives restart and replays to identical canonical 
     assert.equal(projection?.coverageUnits[0]?.coverageId, "coverage-1");
     assert.equal(projection?.candidates[0]?.verdict, "confirmed");
     assert.equal(projection?.budget.spentWorkerInvocations, 3);
+    const hunterAssignment = projection?.assignments.find(
+      (assignment) => assignment.assignmentId === "hunt-1",
+    );
+    assert.deepEqual(hunterAssignment?.taskReceipt, TASK_RECEIPT);
+    assert.deepEqual(hunterAssignment?.resultReceipt, {
+      schemaVersion: 1,
+      result: { kind: "test_result" },
+    });
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
